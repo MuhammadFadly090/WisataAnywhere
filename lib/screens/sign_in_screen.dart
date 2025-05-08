@@ -16,7 +16,7 @@ class SignInScreenState extends State<SignInScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
-  bool _isPasswordVisible = true;
+  bool _isPasswordVisible = false;
 
   // Warna yang diperbarui
   final Color primaryBlue = const Color(0xFF2196F3); // Warna biru primer untuk tema

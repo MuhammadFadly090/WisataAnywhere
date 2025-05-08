@@ -1,22 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fasum/screens/add_post_screen.dart';
 import 'package:fasum/screens/detail_screen.dart';
-import 'package:fasum/screens/sign_in_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class FavoriteScreen extends StatefulWidget {
+  const FavoriteScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<FavoriteScreen> createState() => _FavoriteScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
-
+class _FavoriteScreenState extends State<FavoriteScreen> {
   String formatTime(DateTime dateTime) {
     final now = DateTime.now();
     final diff = now.difference(dateTime);
@@ -34,15 +30,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> signOut(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const SignInScreen()),
-      (route) => false,
-    );
-  }
-
   void _navigateToDetailScreen(String postId, String? imageBase64, String? description, DateTime createdAt, String fullName) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -54,47 +41,31 @@ class _HomeScreenState extends State<HomeScreen> {
           fullName: fullName,
         ),
       ),
-    );
-  }
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
+    ).then((_) {
+      // Refresh the favorite list when coming back from detail screen
+      setState(() {});
     });
-
-    // Handle navigation based on selected index
-    if (index == 1) {
-      // Navigate to add post screen when "Add" is tapped
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (context) => const AddPostScreen()),
-      ).then((_) {
-        // Reset to home tab when returning from add post screen
-        setState(() {
-          _selectedIndex = 0;
-        });
-      });
-    }
-    // You can add navigation to other screens for other indices as needed
   }
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) {
+      return const Center(
+        child: Text('Please sign in to view your favorites'),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Home"),
+        title: const Text("Favorites"),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          IconButton(
-            onPressed: () {
-              signOut(context);
-            },
-            icon: const Icon(Icons.logout),
-          ),
-        ],
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
-            .collection('posts')
+            .collection('favorites')
+            .where('userId', isEqualTo: currentUser.uid)
             .orderBy('createdAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
@@ -105,17 +76,18 @@ class _HomeScreenState extends State<HomeScreen> {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No posts available'));
+            return const Center(child: Text('No favorites yet'));
           }
 
-          final posts = snapshot.data!.docs;
+          final favorites = snapshot.data!.docs;
 
           return ListView.builder(
-            itemCount: posts.length,
+            itemCount: favorites.length,
             itemBuilder: (context, index) {
-              final postDoc = posts[index];
-              final postId = postDoc.id;
-              final data = postDoc.data() as Map<String, dynamic>;
+              final favoriteDoc = favorites[index];
+              final favoriteId = favoriteDoc.id;
+              final data = favoriteDoc.data() as Map<String, dynamic>;
+              final postId = data['postId'] as String;
               final imageBase64 = data['image'] as String?;
               final description = data['description'] as String?;
               final createdAtStr = data['createdAt'] as String;
@@ -194,71 +166,36 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
-                    )
+                    ),
+                    // Tombol Remove from favorites
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton.icon(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            label: const Text('Remove', style: TextStyle(color: Colors.red)),
+                            onPressed: () async {
+                              await FirebaseFirestore.instance
+                                  .collection('favorites')
+                                  .doc(favoriteId)
+                                  .delete();
+                              
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Removed from favorites')),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               );
             },
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const AddPostScreen()),
-          );
-        },
-        child: const Icon(Icons.add),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        color: Colors.white,
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8.0,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: <Widget>[
-            // Home button
-            IconButton(
-              icon: Icon(
-                Icons.home,
-                color: _selectedIndex == 0 ? Theme.of(context).primaryColor : Colors.grey,
-              ),
-              onPressed: () => _onItemTapped(0),
-            ),
-            
-            // Favorite button
-            IconButton(
-              icon: Icon(
-                Icons.favorite,
-                color: _selectedIndex == 2 ? Theme.of(context).primaryColor : Colors.grey,
-              ),
-              onPressed: () => _onItemTapped(2),
-            ),
-            
-            // Empty space for FAB
-            const SizedBox(width: 40),
-            
-            // Search button
-            IconButton(
-              icon: Icon(
-                Icons.search,
-                color: _selectedIndex == 3 ? Theme.of(context).primaryColor : Colors.grey,
-              ),
-              onPressed: () => _onItemTapped(3),
-            ),
-            
-            // User button
-            IconButton(
-              icon: Icon(
-                Icons.person,
-                color: _selectedIndex == 4 ? Theme.of(context).primaryColor : Colors.grey,
-              ),
-              onPressed: () => _onItemTapped(4),
-            ),
-          ],
-        ),
       ),
     );
   }
