@@ -6,8 +6,15 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _selectedIndex = 0;
 
   String formatTime(DateTime dateTime) {
     final now = DateTime.now();
@@ -33,6 +40,26 @@ class HomeScreen extends StatelessWidget {
       MaterialPageRoute(builder: (context) => const SignInScreen()),
       (route) => false,
     );
+  }
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    // Handle navigation based on selected index
+    if (index == 1) {
+      // Navigate to add post screen when "Add" is tapped
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => const AddPostScreen()),
+      ).then((_) {
+        // Reset to home tab when returning from add post screen
+        setState(() {
+          _selectedIndex = 0;
+        });
+      });
+    }
+    // You can add navigation to other screens for other indices as needed
   }
 
   @override
@@ -144,6 +171,55 @@ class HomeScreen extends StatelessWidget {
           );
         },
         child: const Icon(Icons.add),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      bottomNavigationBar: BottomAppBar(
+        color: Colors.white,
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 8.0,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: <Widget>[
+            // Home button
+            IconButton(
+              icon: Icon(
+                Icons.home,
+                color: _selectedIndex == 0 ? Theme.of(context).primaryColor : Colors.grey,
+              ),
+              onPressed: () => _onItemTapped(0),
+            ),
+            
+            // Favorite button
+            IconButton(
+              icon: Icon(
+                Icons.favorite,
+                color: _selectedIndex == 2 ? Theme.of(context).primaryColor : Colors.grey,
+              ),
+              onPressed: () => _onItemTapped(2),
+            ),
+            
+            // Empty space for FAB
+            const SizedBox(width: 40),
+            
+            // Search button
+            IconButton(
+              icon: Icon(
+                Icons.search,
+                color: _selectedIndex == 3 ? Theme.of(context).primaryColor : Colors.grey,
+              ),
+              onPressed: () => _onItemTapped(3),
+            ),
+            
+            // User button
+            IconButton(
+              icon: Icon(
+                Icons.person,
+                color: _selectedIndex == 4 ? Theme.of(context).primaryColor : Colors.grey,
+              ),
+              onPressed: () => _onItemTapped(4),
+            ),
+          ],
+        ),
       ),
     );
   }
