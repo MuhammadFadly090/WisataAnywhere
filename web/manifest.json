@@ -1,6 +1,6 @@
 {
-    "name": "wisata_anywhere",
-    "short_name": "wisata_anywhere",
+    "name": "fasum",
+    "short_name": "fasum",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

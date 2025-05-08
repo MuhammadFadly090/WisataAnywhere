@@ -1,19 +1,31 @@
-name: wisata_anywhere
+name: fasum
 description: "A new Flutter project."
 publish_to: 'none'
 version: 0.1.0
 
 environment:
-  sdk: ^3.5.3
+  sdk: ^3.7.0
 
 dependencies:
+ 
   flutter:
     sdk: flutter
+  geolocator: ^13.0.0
+  firebase_core: ^3.12.1
+  firebase_auth: ^5.5.1
+  image_picker: ^1.1.2
+  flutter_image_compress: ^2.4.0
+  cloud_firestore: ^5.6.7
+  intl: ^0.20.2
+  flutter_launcher_icons: ^0.14.3
+  url_launcher: ^6.3.1
+  shimmer: ^3.0.0
+  google_generative_ai: ^0.4.7
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
