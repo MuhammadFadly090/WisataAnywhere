@@ -5,7 +5,8 @@ import 'package:fasum/screens/splash_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:fasum/firebase_options.dart';
 import 'package:fasum/screens/home_screens.dart';
-
+import 'package:provider/provider.dart';
+import 'package:fasum/screens/theme_provider.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,7 +19,16 @@ void main() async {
     debugPrint('Firebase initialization error: $e');
   }
 
-  runApp(const MyApp());
+  // Initialize theme provider and load saved preference
+  final themeProvider = ThemeProvider();
+  await themeProvider.loadTheme();
+
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => themeProvider,
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -26,14 +36,27 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'WisataAnywhere',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.lightBlue),
+      theme: ThemeData.light().copyWith(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.lightBlue,
+          brightness: Brightness.light,
+        ),
         useMaterial3: true,
       ),
-      home: SplashScreen(),
+      darkTheme: ThemeData.dark().copyWith(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.lightBlue,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      themeMode: themeProvider.themeMode,
+      home: const AuthWrapper(),
     );
   }
 }
@@ -46,19 +69,16 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // Show loading indicator while checking auth state
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // If user is logged in, show HomeScreen
         if (snapshot.hasData) {
           return const HomeScreen();
         }
 
-        // Otherwise show SignInScreen
         return const SignInScreen();
       },
     );
