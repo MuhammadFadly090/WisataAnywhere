@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fasum/screens/detail_screen.dart'; 
+import 'package:intl/intl.dart'; 
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -28,19 +31,22 @@ class _SearchScreenState extends State<SearchScreen> {
     try {
       final result = await FirebaseFirestore.instance
           .collection('posts')
-          .where('description', isGreaterThanOrEqualTo: query)
-          .where('description', isLessThan: query + 'z')
+          .where('title', isGreaterThanOrEqualTo: query)
+          .where('title', isLessThan: query + 'z')
+          .orderBy('title')
           .limit(10)
           .get();
 
       return result.docs.map((doc) {
         final data = doc.data();
+        final createdAt = DateTime.parse(data['createdAt']);
         return {
           'id': doc.id,
+          'title': data['title'],
           'description': data['description'],
           'image': data['image'],
           'fullName': data['fullName'] ?? 'Anonymous',
-          'createdAt': data['createdAt'],
+          'createdAt': createdAt,
         };
       }).toList();
     } catch (e) {
@@ -53,6 +59,10 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
+  String _formatDate(DateTime date) {
+    return DateFormat('dd MMM yyyy').format(date);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -60,7 +70,7 @@ class _SearchScreenState extends State<SearchScreen> {
         title: TextField(
           controller: _searchController,
           decoration: InputDecoration(
-            hintText: 'Search posts...',
+            hintText: 'Search by title...',
             border: InputBorder.none,
             suffixIcon: IconButton(
               icon: const Icon(Icons.clear),
@@ -80,43 +90,75 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       body: Column(
         children: [
-          if (_searchText.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: ElevatedButton(
-                onPressed: () => _searchPosts(_searchText),
-                child: const Text('Search'),
-              ),
-            ),
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : Expanded(
-                  child: FutureBuilder<List<Map<String, dynamic>>>(
-                    future: _searchPosts(_searchText),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return const Center(child: Text('No results found'));
-                      }
+          // Auto-search as user types (remove the search button)
+          Expanded(
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _searchPosts(_searchText),
+              builder: (context, snapshot) {
+                if (_searchText.isEmpty) {
+                  return const Center(
+                    child: Text('Enter a title to search'),
+                  );
+                }
 
-                      final posts = snapshot.data!;
+                if (_isLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-                      return ListView.builder(
-                        itemCount: posts.length,
-                        itemBuilder: (context, index) {
-                          final post = posts[index];
-                          return ListTile(
-                            title: Text(post['description']),
-                            subtitle: Text(post['fullName']),
-                            // Tambahan: bisa menambahkan onTap untuk navigasi ke detail post
-                            onTap: () {
-                              // Navigator.push(...);
-                            },
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Center(child: Text('No posts found'));
+                }
+
+                final posts = snapshot.data!;
+
+                return ListView.builder(
+                  itemCount: posts.length,
+                  itemBuilder: (context, index) {
+                    final post = posts[index];
+                    return Card(
+                      margin: const EdgeInsets.all(8),
+                      child: ListTile(
+                        title: Text(post['title']),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(post['description']),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Posted by ${post['fullName']} on ${_formatDate(post['createdAt'])}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                        leading: post['image'] != null
+                            ? Image.memory(
+                                base64Decode(post['image']),
+                                width: 50,
+                                height: 50,
+                                fit: BoxFit.cover,
+                              )
+                            : const Icon(Icons.image),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => DetailPostScreen(
+                                postId: post['id'],
+                                imageBase64: post['image'],
+                                description: post['description'],
+                                createdAt: post['createdAt'],
+                                fullName: post['fullName'],
+                              ),
+                            ),
                           );
                         },
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
