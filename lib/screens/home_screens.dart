@@ -1,13 +1,17 @@
+import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fasum/screens/add_post_screen.dart';
 import 'package:fasum/screens/detail_screen.dart';
 import 'package:fasum/screens/sign_in_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 import 'package:fasum/screens/theme_provider.dart'; 
+import 'package:fasum/screens/favorite_screen.dart'; 
+import 'package:fasum/screens/search_screen.dart';
+
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -228,6 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: <Widget>[
+            // Home Button
             IconButton(
               icon: Icon(
                 Icons.home,
@@ -235,39 +240,75 @@ class _HomeScreenState extends State<HomeScreen> {
                   ? Theme.of(context).colorScheme.primary 
                   : (isDarkMode ? Colors.grey[400] : Colors.grey),
               ),
-              onPressed: () => _onItemTapped(0),
+              onPressed: () {
+                setState(() => _selectedIndex = 0);
+                // Jika sudah di home screen, tidak perlu navigasi lagi
+                if (ModalRoute.of(context)?.settings.name != '/') {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HomeScreen()),
+                    (route) => false,
+                  );
+                }
+              },
             ),
             
+            // Favorite Button - Diubah untuk navigasi ke FavoriteScreen
             IconButton(
               icon: Icon(
                 Icons.favorite,
-                color: _selectedIndex == 2 
+                color: _selectedIndex == 1  // Diubah dari 2 ke 1
                   ? Theme.of(context).colorScheme.primary 
                   : (isDarkMode ? Colors.grey[400] : Colors.grey),
               ),
-              onPressed: () => _onItemTapped(2),
+              onPressed: () {
+                setState(() => _selectedIndex = 1);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const FavoriteScreen()),
+                ).then((_) {
+                  // Reset index ketika kembali dari favorite screen
+                  setState(() => _selectedIndex = 0);
+                });
+              },
             ),
             
+            // Spacer untuk FAB
             const SizedBox(width: 40),
             
+            // Search Button
             IconButton(
               icon: Icon(
                 Icons.search,
-                color: _selectedIndex == 3 
+                color: _selectedIndex == 2
                   ? Theme.of(context).colorScheme.primary 
                   : (isDarkMode ? Colors.grey[400] : Colors.grey),
               ),
-              onPressed: () => _onItemTapped(3),
+              onPressed: () {
+                setState(() => _selectedIndex = 2);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SearchScreen()),
+                ).then((_) {
+                  // Reset index ketika kembali dari search screen
+                  setState(() => _selectedIndex = 0);
+                });
+              },
             ),
             
+            // Profile Button
             IconButton(
               icon: Icon(
                 Icons.person,
-                color: _selectedIndex == 4 
+                color: _selectedIndex == 3  // Diubah dari 4 ke 3
                   ? Theme.of(context).colorScheme.primary 
                   : (isDarkMode ? Colors.grey[400] : Colors.grey),
               ),
-              onPressed: () => _onItemTapped(4),
+              onPressed: () {
+                setState(() => _selectedIndex = 3);
+                // Tambahkan navigasi ke ProfileScreen jika ada
+                // Navigator.push(...);
+              },
             ),
           ],
         ),

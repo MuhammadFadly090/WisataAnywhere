@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:fasum/screens/theme_provider.dart'; 
 
 class FavoriteScreen extends StatefulWidget {
   const FavoriteScreen({super.key});
@@ -30,8 +32,14 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
     }
   }
 
-  void _navigateToDetailScreen(String postId, String? imageBase64, String? description, DateTime createdAt, String fullName) {
-    Navigator.of(context).push(
+  Future<void> _navigateToDetailScreen(
+    String postId, 
+    String? imageBase64, 
+    String? description, 
+    DateTime createdAt, 
+    String fullName
+  ) async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => DetailPostScreen(
           postId: postId,
@@ -41,26 +49,58 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
           fullName: fullName,
         ),
       ),
-    ).then((_) {
-      // Refresh the favorite list when coming back from detail screen
-      setState(() {});
-    });
+    );
+    // Refresh setelah kembali dari detail screen
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _removeFromFavorites(String favoriteId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('favorites')
+          .doc(favoriteId)
+          .delete();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Removed from favorites')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to remove: $e')),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.themeMode == ThemeMode.dark;
     final currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
-      return const Center(
-        child: Text('Please sign in to view your favorites'),
+      return Center(
+        child: Text(
+          'Please sign in to view your favorites',
+          style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+        ),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
         title: const Text("Favorites"),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
+            onPressed: () {
+              themeProvider.toggleTheme(!isDarkMode);
+            },
+          ),
+        ],
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
@@ -73,10 +113,20 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(
+              child: Text(
+                'Error: ${snapshot.error}',
+                style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+              ),
+            );
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No favorites yet'));
+            return Center(
+              child: Text(
+                'No favorites yet',
+                style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+              ),
+            );
           }
 
           final favorites = snapshot.data!.docs;
@@ -91,13 +141,13 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
               final imageBase64 = data['image'] as String?;
               final description = data['description'] as String?;
               final createdAtStr = data['createdAt'] as String;
-              final fullName = data['fullName'] as String? ?? 'Anonim';
+              final fullName = data['fullName'] as String? ?? 'Anonymous';
 
-              // Parse ke DateTime
               final createdAt = DateTime.parse(createdAtStr);
 
               return Card(
                 margin: const EdgeInsets.all(10),
+                color: isDarkMode ? Colors.grey[900] : Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -106,15 +156,8 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                   children: [
                     if (imageBase64 != null)
                       GestureDetector(
-                        onTap: () {
-                          _navigateToDetailScreen(
-                            postId,
-                            imageBase64,
-                            description,
-                            createdAt,
-                            fullName,
-                          );
-                        },
+                        onTap: () => _navigateToDetailScreen(
+                          postId, imageBase64, description, createdAt, fullName),
                         child: ClipRRect(
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(10)),
@@ -127,15 +170,8 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                         ),
                       ),
                     GestureDetector(
-                      onTap: () {
-                        _navigateToDetailScreen(
-                          postId,
-                          imageBase64,
-                          description,
-                          createdAt,
-                          fullName,
-                        );
-                      },
+                      onTap: () => _navigateToDetailScreen(
+                        postId, imageBase64, description, createdAt, fullName),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 8),
@@ -147,13 +183,16 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                               children: [
                                 Text(
                                   formatTime(createdAt),
-                                  style: const TextStyle(
-                                    fontSize: 12, color: Colors.grey),
+                                  style: TextStyle(
+                                    fontSize: 12, 
+                                    color: isDarkMode ? Colors.grey[400] : Colors.grey),
                                 ),
                                 Text(
                                   fullName,
-                                  style: const TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.w500),
+                                  style: TextStyle(
+                                    fontSize: 16, 
+                                    fontWeight: FontWeight.w500,
+                                    color: isDarkMode ? Colors.white : Colors.black),
                                 ),
                                 const SizedBox(height: 6),
                               ],
@@ -161,31 +200,22 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                             const SizedBox(height: 6),
                             Text(
                               description ?? '',
-                              style: const TextStyle(fontSize: 16),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: isDarkMode ? Colors.white : Colors.black),
                             ),
                           ],
                         ),
                       ),
                     ),
-                    // Tombol Remove from favorites
                     Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          TextButton.icon(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            label: const Text('Remove', style: TextStyle(color: Colors.red)),
-                            onPressed: () async {
-                              await FirebaseFirestore.instance
-                                  .collection('favorites')
-                                  .doc(favoriteId)
-                                  .delete();
-                              
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Removed from favorites')),
-                              );
-                            },
+                          IconButton(
+                            icon: const Icon(Icons.favorite, color: Colors.red),
+                            onPressed: () => _removeFromFavorites(favoriteId),
                           ),
                         ],
                       ),
