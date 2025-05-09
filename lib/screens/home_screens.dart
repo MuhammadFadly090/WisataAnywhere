@@ -16,6 +16,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  bool _isDarkMode = false;
 
   String formatTime(DateTime dateTime) {
     final now = DateTime.now();
@@ -62,77 +63,119 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedIndex = index;
     });
 
-    // Handle navigation based on selected index
     if (index == 1) {
-      // Navigate to add post screen when "Add" is tapped
       Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => const AddPostScreen()),
       ).then((_) {
-        // Reset to home tab when returning from add post screen
         setState(() {
           _selectedIndex = 0;
         });
       });
     }
-    // You can add navigation to other screens for other indices as needed
+  }
+
+  void _toggleDarkMode() {
+    setState(() {
+      _isDarkMode = !_isDarkMode;
+    });
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Home"),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          IconButton(
-            onPressed: () {
-              signOut(context);
-            },
-            icon: const Icon(Icons.logout),
+ Widget build(BuildContext context) {
+  final themeData = _isDarkMode 
+    ? ThemeData.dark().copyWith(
+        colorScheme: ColorScheme.dark(
+          primary: Colors.blueGrey[800]!,
+          secondary: Colors.blueGrey[600]!,
+        ),
+        cardTheme: CardTheme(
+          color: Colors.grey[900],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
           ),
-        ],
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('posts')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No posts available'));
-          }
+        ),
+      )
+    : ThemeData.light().copyWith(
+        colorScheme: ColorScheme.light(
+          primary: Colors.blue,
+          secondary: Colors.lightBlue[200]!,
+        ),
+      );
 
-          final posts = snapshot.data!.docs;
+    return MaterialApp(
+      theme: themeData,
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text("Home"),
+          actions: [
+            IconButton(
+              icon: Icon(_isDarkMode ? Icons.light_mode : Icons.dark_mode),
+              onPressed: _toggleDarkMode,
+            ),
+            IconButton(
+              onPressed: () => signOut(context),
+              icon: const Icon(Icons.logout),
+            ),
+          ],
+        ),
+        body: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('posts')
+              .orderBy('createdAt', descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return const Center(child: Text('No posts available'));
+            }
 
-          return ListView.builder(
-            itemCount: posts.length,
-            itemBuilder: (context, index) {
-              final postDoc = posts[index];
-              final postId = postDoc.id;
-              final data = postDoc.data() as Map<String, dynamic>;
-              final imageBase64 = data['image'] as String?;
-              final description = data['description'] as String?;
-              final createdAtStr = data['createdAt'] as String;
-              final fullName = data['fullName'] as String? ?? 'Anonim';
+            final posts = snapshot.data!.docs;
 
-              // Parse ke DateTime
-              final createdAt = DateTime.parse(createdAtStr);
+            return ListView.builder(
+              itemCount: posts.length,
+              itemBuilder: (context, index) {
+                final postDoc = posts[index];
+                final postId = postDoc.id;
+                final data = postDoc.data() as Map<String, dynamic>;
+                final imageBase64 = data['image'] as String?;
+                final description = data['description'] as String?;
+                final createdAtStr = data['createdAt'] as String;
+                final fullName = data['fullName'] as String? ?? 'Anonim';
 
-              return Card(
-                margin: const EdgeInsets.all(10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (imageBase64 != null)
+                final createdAt = DateTime.parse(createdAtStr);
+
+                return Card(
+                  margin: const EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (imageBase64 != null)
+                        GestureDetector(
+                          onTap: () {
+                            _navigateToDetailScreen(
+                              postId,
+                              imageBase64,
+                              description,
+                              createdAt,
+                              fullName,
+                            );
+                          },
+                          child: ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(10)),
+                            child: Image.memory(
+                              base64Decode(imageBase64),
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: 200,
+                            ),
+                          ),
+                        ),
                       GestureDetector(
                         onTap: () {
                           _navigateToDetailScreen(
@@ -143,121 +186,105 @@ class _HomeScreenState extends State<HomeScreen> {
                             fullName,
                           );
                         },
-                        child: ClipRRect(
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(10)),
-                          child: Image.memory(
-                            base64Decode(imageBase64),
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: 200,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    formatTime(createdAt),
+                                    style: TextStyle(
+                                      fontSize: 12, 
+                                      color: _isDarkMode ? Colors.grey[400] : Colors.grey),
+                                  ),
+                                  Text(
+                                    fullName,
+                                    style: const TextStyle(
+                                      fontSize: 16, 
+                                      fontWeight: FontWeight.w500),
+                                  ),
+                                  const SizedBox(height: 6),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                description ?? '',
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    GestureDetector(
-                      onTap: () {
-                        _navigateToDetailScreen(
-                          postId,
-                          imageBase64,
-                          description,
-                          createdAt,
-                          fullName,
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  formatTime(createdAt),
-                                  style: const TextStyle(
-                                    fontSize: 12, color: Colors.grey),
-                                ),
-                                Text(
-                                  fullName,
-                                  style: const TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.w500),
-                                ),
-                                const SizedBox(height: 6),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              description ?? '',
-                              style: const TextStyle(fontSize: 16),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  ],
+                      )
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const AddPostScreen()),
+            );
+          },
+          child: const Icon(Icons.add),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        bottomNavigationBar: BottomAppBar(
+          shape: const CircularNotchedRectangle(),
+          notchMargin: 8.0,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: <Widget>[
+              IconButton(
+                icon: Icon(
+                  Icons.home,
+                  color: _selectedIndex == 0 
+                    ? Theme.of(context).colorScheme.primary 
+                    : Colors.grey,
                 ),
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const AddPostScreen()),
-          );
-        },
-        child: const Icon(Icons.add),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        color: Colors.white,
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8.0,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: <Widget>[
-            // Home button
-            IconButton(
-              icon: Icon(
-                Icons.home,
-                color: _selectedIndex == 0 ? Theme.of(context).primaryColor : Colors.grey,
+                onPressed: () => _onItemTapped(0),
               ),
-              onPressed: () => _onItemTapped(0),
-            ),
-            
-            // Favorite button
-            IconButton(
-              icon: Icon(
-                Icons.favorite,
-                color: _selectedIndex == 2 ? Theme.of(context).primaryColor : Colors.grey,
+              
+              IconButton(
+                icon: Icon(
+                  Icons.favorite,
+                  color: _selectedIndex == 2 
+                    ? Theme.of(context).colorScheme.primary 
+                    : Colors.grey,
+                ),
+                onPressed: () => _onItemTapped(2),
               ),
-              onPressed: () => _onItemTapped(2),
-            ),
-            
-            // Empty space for FAB
-            const SizedBox(width: 40),
-            
-            // Search button
-            IconButton(
-              icon: Icon(
-                Icons.search,
-                color: _selectedIndex == 3 ? Theme.of(context).primaryColor : Colors.grey,
+              
+              const SizedBox(width: 40),
+              
+              IconButton(
+                icon: Icon(
+                  Icons.search,
+                  color: _selectedIndex == 3 
+                    ? Theme.of(context).colorScheme.primary 
+                    : Colors.grey,
+                ),
+                onPressed: () => _onItemTapped(3),
               ),
-              onPressed: () => _onItemTapped(3),
-            ),
-            
-            // User button
-            IconButton(
-              icon: Icon(
-                Icons.person,
-                color: _selectedIndex == 4 ? Theme.of(context).primaryColor : Colors.grey,
+              
+              IconButton(
+                icon: Icon(
+                  Icons.person,
+                  color: _selectedIndex == 4 
+                    ? Theme.of(context).colorScheme.primary 
+                    : Colors.grey,
+                ),
+                onPressed: () => _onItemTapped(4),
               ),
-              onPressed: () => _onItemTapped(4),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
