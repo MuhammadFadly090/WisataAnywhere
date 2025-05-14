@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 
 class DetailPostScreen extends StatefulWidget {
   final String? imageBase64;
+  final String? title;
   final String? description;
   final DateTime createdAt;
   final String fullName;
@@ -18,6 +19,7 @@ class DetailPostScreen extends StatefulWidget {
 
   const DetailPostScreen({
     super.key,
+    required this.title,
     required this.imageBase64,
     required this.description,
     required this.createdAt,
@@ -113,41 +115,42 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
 
   // Menyimpan like ke database
   Future<void> _toggleLike() async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in to like posts')),
-      );
-      return;
-    }
+  final currentUser = FirebaseAuth.instance.currentUser;
+  if (currentUser == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Please sign in to like posts')),
+    );
+    return;
+  }
 
-    setState(() {
-      isLiked = !isLiked;
+  setState(() {
+    isLiked = !isLiked;
+  });
+
+  if (isLiked) {
+    // Tambahkan ke koleksi favorites
+    await FirebaseFirestore.instance.collection('favorites').add({
+      'userId': currentUser.uid,
+      'postId': widget.postId,
+      'createdAt': DateTime.now().toIso8601String(),
+      'fullName': widget.fullName,
+      'title': widget.title, // Tambahkan ini
+      'description': widget.description,
+      'image': widget.imageBase64,
     });
+  } else {
+    // Hapus dari koleksi favorites
+    final doc = await FirebaseFirestore.instance
+        .collection('favorites')
+        .where('userId', isEqualTo: currentUser.uid)
+        .where('postId', isEqualTo: widget.postId)
+        .get();
 
-    if (isLiked) {
-      // Tambahkan ke koleksi favorites
-      await FirebaseFirestore.instance.collection('favorites').add({
-        'userId': currentUser.uid,
-        'postId': widget.postId,
-        'createdAt': DateTime.now().toIso8601String(),
-        'fullName': widget.fullName,
-        'description': widget.description,
-        'image': widget.imageBase64,
-      });
-    } else {
-      // Hapus dari koleksi favorites
-      final doc = await FirebaseFirestore.instance
-          .collection('favorites')
-          .where('userId', isEqualTo: currentUser.uid)
-          .where('postId', isEqualTo: widget.postId)
-          .get();
-
-      for (var document in doc.docs) {
-        await document.reference.delete();
-      }
+    for (var document in doc.docs) {
+      await document.reference.delete();
     }
   }
+}
 
   // Menyimpan komentar ke database
   Future<void> _addComment() async {
@@ -192,7 +195,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   // Replace your current _sharePost() method with this updated version
 Future<void> _sharePost() async {
   try {
-    String shareText = widget.description ?? 'Check out this post!';
+    String shareText = '${widget.title ?? 'Check this post'}\n\n${widget.description ?? ''}';
     
     if (widget.imageBase64 != null) {
       // Simpan gambar sementara untuk dibagikan
@@ -221,10 +224,10 @@ Future<void> _sharePost() async {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Detail Post"),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
+        appBar: AppBar(
+          title: Text(widget.title ?? "Detail Post"), 
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        ),
       body: isLoading 
         ? const Center(child: CircularProgressIndicator()) 
         : SingleChildScrollView(
@@ -276,6 +279,18 @@ Future<void> _sharePost() async {
                       ),
                       
                       const SizedBox(height: 16),
+
+                      // Title - Tambahkan bagian ini
+                      if (widget.title != null && widget.title!.isNotEmpty)
+                          Text(
+                            widget.title!,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                      
+                      const SizedBox(height: 8),
                       
                       // Description
                       if (widget.description != null && widget.description!.isNotEmpty)
