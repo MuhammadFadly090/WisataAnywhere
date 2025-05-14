@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:fasum/screens/theme_provider.dart'; 
+import 'package:fasum/screens/theme_provider.dart';
 
 class FavoriteScreen extends StatefulWidget {
   const FavoriteScreen({super.key});
@@ -15,26 +15,14 @@ class FavoriteScreen extends StatefulWidget {
 }
 
 class _FavoriteScreenState extends State<FavoriteScreen> {
-  String formatTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final diff = now.difference(dateTime);
-
-    if (diff.inSeconds < 60) {
-      return '${diff.inSeconds} secs ago';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes} mins ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours} hrs ago';
-    } else if (diff.inHours < 48) {
-      return '1 day ago';
-    } else {
-      return DateFormat('dd/MM/yyyy').format(dateTime);
-    }
+  String _formatDate(DateTime date) {
+    return DateFormat('dd MMM yyyy').format(date);
   }
 
   Future<void> _navigateToDetailScreen(
     String postId, 
     String? imageBase64, 
+    String? title,
     String? description, 
     DateTime createdAt, 
     String fullName
@@ -44,6 +32,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
         builder: (context) => DetailPostScreen(
           postId: postId,
           imageBase64: imageBase64,
+          title: title,
           description: description,
           createdAt: createdAt,
           fullName: fullName,
@@ -63,13 +52,19 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Removed from favorites')),
+          const SnackBar(
+            content: Text('Removed from favorites'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to remove: $e')),
+          SnackBar(
+            content: Text('Failed to remove: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -83,9 +78,19 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
 
     if (currentUser == null) {
       return Center(
-        child: Text(
-          'Please sign in to view your favorites',
-          style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.favorite_border, size: 50, color: Colors.grey),
+            const SizedBox(height: 16),
+            Text(
+              'Please sign in to view your favorites',
+              style: TextStyle(
+                fontSize: 16,
+                color: isDarkMode ? Colors.white : Colors.black,
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -114,17 +119,45 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
           }
           if (snapshot.hasError) {
             return Center(
-              child: Text(
-                'Error: ${snapshot.error}',
-                style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 50, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error loading favorites',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isDarkMode ? Colors.white : Colors.black,
+                    ),
+                  ),
+                ],
               ),
             );
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return Center(
-              child: Text(
-                'No favorites yet',
-                style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.favorite_border, size: 50, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No favorites yet',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isDarkMode ? Colors.white : Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tap the heart icon on posts to add them here',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ],
               ),
             );
           }
@@ -132,6 +165,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
           final favorites = snapshot.data!.docs;
 
           return ListView.builder(
+            padding: const EdgeInsets.all(8),
             itemCount: favorites.length,
             itemBuilder: (context, index) {
               final favoriteDoc = favorites[index];
@@ -139,6 +173,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
               final data = favoriteDoc.data() as Map<String, dynamic>;
               final postId = data['postId'] as String;
               final imageBase64 = data['image'] as String?;
+              final title = data['title'] as String?;
               final description = data['description'] as String?;
               final createdAtStr = data['createdAt'] as String;
               final fullName = data['fullName'] as String? ?? 'Anonymous';
@@ -146,81 +181,80 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
               final createdAt = DateTime.parse(createdAtStr);
 
               return Card(
-                margin: const EdgeInsets.all(10),
-                color: isDarkMode ? Colors.grey[900] : Colors.white,
+                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                elevation: 2,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (imageBase64 != null)
-                      GestureDetector(
-                        onTap: () => _navigateToDetailScreen(
-                          postId, imageBase64, description, createdAt, fullName),
-                        child: ClipRRect(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => _navigateToDetailScreen(
+                    postId, imageBase64, title, description, createdAt, fullName),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (imageBase64 != null)
+                        ClipRRect(
                           borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(10)),
+                            top: Radius.circular(12)),
                           child: Image.memory(
                             base64Decode(imageBase64),
                             fit: BoxFit.cover,
                             width: double.infinity,
-                            height: 200,
+                            height: 180,
                           ),
                         ),
-                      ),
-                    GestureDetector(
-                      onTap: () => _navigateToDetailScreen(
-                        postId, imageBase64, description, createdAt, fullName),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            if (title != null && title.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  title,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDarkMode ? Colors.white : Colors.black,
+                                  ),
+                                ),
+                              ),
+                            if (description != null && description.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  description,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                                  ),
+                                ),
+                              ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  formatTime(createdAt),
+                                  'Posted by $fullName • ${_formatDate(createdAt)}',
                                   style: TextStyle(
-                                    fontSize: 12, 
-                                    color: isDarkMode ? Colors.grey[400] : Colors.grey),
+                                    fontSize: 12,
+                                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                  ),
                                 ),
-                                Text(
-                                  fullName,
-                                  style: TextStyle(
-                                    fontSize: 16, 
-                                    fontWeight: FontWeight.w500,
-                                    color: isDarkMode ? Colors.white : Colors.black),
+                                IconButton(
+                                  icon: const Icon(Icons.favorite, color: Colors.red),
+                                  onPressed: () => _removeFromFavorites(favoriteId),
                                 ),
-                                const SizedBox(height: 6),
                               ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              description ?? '',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: isDarkMode ? Colors.white : Colors.black),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.favorite, color: Colors.red),
-                            onPressed: () => _removeFromFavorites(favoriteId),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },

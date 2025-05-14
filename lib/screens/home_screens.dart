@@ -11,8 +11,6 @@ import 'package:fasum/screens/theme_provider.dart';
 import 'package:fasum/screens/favorite_screen.dart'; 
 import 'package:fasum/screens/search_screen.dart';
 
-
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -23,24 +21,11 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  String formatTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final diff = now.difference(dateTime);
-
-    if (diff.inSeconds < 60) {
-      return '${diff.inSeconds} secs ago';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes} mins ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours} hrs ago';
-    } else if (diff.inHours < 48) {
-      return '1 day ago';
-    } else {
-      return DateFormat('dd/MM/yyyy').format(dateTime);
-    }
+  String _formatDate(DateTime date) {
+    return DateFormat('dd MMM yyyy').format(date);
   }
 
-  Future<void> signOut(BuildContext context) async {
+  Future<void> _signOut(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
     Navigator.pushAndRemoveUntil(
       context,
@@ -49,12 +34,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _navigateToDetailScreen(String postId, String? imageBase64, String? description, DateTime createdAt, String fullName) {
+  void _navigateToDetailScreen(
+    String postId, 
+    String? imageBase64, 
+    String? title,
+    String? description, 
+    DateTime createdAt, 
+    String fullName
+  ) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => DetailPostScreen(
           postId: postId,
           imageBase64: imageBase64,
+          title: title,
           description: description,
           createdAt: createdAt,
           fullName: fullName,
@@ -89,14 +82,21 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text("Home"),
         actions: [
           IconButton(
-            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
+            icon: const Icon(Icons.search),
             onPressed: () {
-              themeProvider.toggleTheme(!isDarkMode);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SearchScreen()),
+              );
             },
           ),
           IconButton(
-            onPressed: () => signOut(context),
+            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
+            onPressed: () => themeProvider.toggleTheme(!isDarkMode),
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
+            onPressed: () => _signOut(context),
           ),
         ],
       ),
@@ -110,50 +110,84 @@ class _HomeScreenState extends State<HomeScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 50, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error loading posts',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isDarkMode ? Colors.white : Colors.black,
+                    ),
+                  ),
+                ],
+              ),
+            );
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No posts available'));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.post_add, size: 50, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No posts available',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isDarkMode ? Colors.white : Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Be the first to create a post!',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            );
           }
 
           final posts = snapshot.data!.docs;
 
           return ListView.builder(
+            padding: const EdgeInsets.all(8),
             itemCount: posts.length,
             itemBuilder: (context, index) {
               final postDoc = posts[index];
               final postId = postDoc.id;
               final data = postDoc.data() as Map<String, dynamic>;
               final imageBase64 = data['image'] as String?;
+              final title = data['title'] as String?;
               final description = data['description'] as String?;
               final createdAtStr = data['createdAt'] as String;
-              final fullName = data['fullName'] as String? ?? 'Anonim';
+              final fullName = data['fullName'] as String? ?? 'Anonymous';
 
               final createdAt = DateTime.parse(createdAtStr);
 
               return Card(
-                margin: const EdgeInsets.all(10),
-                color: isDarkMode ? Colors.grey[900] : Colors.white,
+                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                elevation: 2,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (imageBase64 != null)
-                      GestureDetector(
-                        onTap: () {
-                          _navigateToDetailScreen(
-                            postId,
-                            imageBase64,
-                            description,
-                            createdAt,
-                            fullName,
-                          );
-                        },
-                        child: ClipRRect(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => _navigateToDetailScreen(
+                    postId, imageBase64, title, description, createdAt, fullName),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (imageBase64 != null)
+                        ClipRRect(
                           borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(10)),
+                            top: Radius.circular(12)),
                           child: Image.memory(
                             base64Decode(imageBase64),
                             fit: BoxFit.cover,
@@ -161,54 +195,67 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 200,
                           ),
                         ),
-                      ),
-                    GestureDetector(
-                      onTap: () {
-                        _navigateToDetailScreen(
-                          postId,
-                          imageBase64,
-                          description,
-                          createdAt,
-                          fullName,
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            Row(
                               children: [
-                                Text(
-                                  formatTime(createdAt),
-                                  style: TextStyle(
-                                    fontSize: 12, 
-                                    color: isDarkMode ? Colors.grey[400] : Colors.grey),
+                                const CircleAvatar(
+                                  radius: 16,
+                                  child: Icon(Icons.person, size: 16),
                                 ),
-                                Text(
-                                  fullName,
-                                  style: TextStyle(
-                                    fontSize: 16, 
-                                    fontWeight: FontWeight.w500,
-                                    color: isDarkMode ? Colors.white : Colors.black),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      fullName,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: isDarkMode ? Colors.white : Colors.black,
+                                      ),
+                                    ),
+                                    Text(
+                                      _formatDate(createdAt),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 6),
                               ],
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              description ?? '',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: isDarkMode ? Colors.white : Colors.black),
-                            ),
+                            const SizedBox(height: 8),
+                            if (title != null && title.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  title,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDarkMode ? Colors.white : Colors.black,
+                                  ),
+                                ),
+                              ),
+                            if (description != null && description.isNotEmpty)
+                              Text(
+                                description,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                                ),
+                              ),
                           ],
                         ),
                       ),
-                    )
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
@@ -218,100 +265,29 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const AddPostScreen()),
+            MaterialPageRoute(builder: (context) => const AddPostScreen()),
           );
         },
         child: const Icon(Icons.add),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        color: isDarkMode ? Colors.grey[900] : Colors.white,
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8.0,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: <Widget>[
-            // Home Button
-            IconButton(
-              icon: Icon(
-                Icons.home,
-                color: _selectedIndex == 0 
-                  ? Theme.of(context).colorScheme.primary 
-                  : (isDarkMode ? Colors.grey[400] : Colors.grey),
-              ),
-              onPressed: () {
-                setState(() => _selectedIndex = 0);
-                // Jika sudah di home screen, tidak perlu navigasi lagi
-                if (ModalRoute.of(context)?.settings.name != '/') {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => const HomeScreen()),
-                    (route) => false,
-                  );
-                }
-              },
-            ),
-            
-            // Favorite Button - Diubah untuk navigasi ke FavoriteScreen
-            IconButton(
-              icon: Icon(
-                Icons.favorite,
-                color: _selectedIndex == 1  // Diubah dari 2 ke 1
-                  ? Theme.of(context).colorScheme.primary 
-                  : (isDarkMode ? Colors.grey[400] : Colors.grey),
-              ),
-              onPressed: () {
-                setState(() => _selectedIndex = 1);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const FavoriteScreen()),
-                ).then((_) {
-                  // Reset index ketika kembali dari favorite screen
-                  setState(() => _selectedIndex = 0);
-                });
-              },
-            ),
-            
-            // Spacer untuk FAB
-            const SizedBox(width: 40),
-            
-            // Search Button
-            IconButton(
-              icon: Icon(
-                Icons.search,
-                color: _selectedIndex == 2
-                  ? Theme.of(context).colorScheme.primary 
-                  : (isDarkMode ? Colors.grey[400] : Colors.grey),
-              ),
-              onPressed: () {
-                setState(() => _selectedIndex = 2);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const SearchScreen()),
-                ).then((_) {
-                  // Reset index ketika kembali dari search screen
-                  setState(() => _selectedIndex = 0);
-                });
-              },
-            ),
-            
-            // Profile Button
-            IconButton(
-              icon: Icon(
-                Icons.person,
-                color: _selectedIndex == 3  // Diubah dari 4 ke 3
-                  ? Theme.of(context).colorScheme.primary 
-                  : (isDarkMode ? Colors.grey[400] : Colors.grey),
-              ),
-              onPressed: () {
-                setState(() => _selectedIndex = 3);
-                // Tambahkan navigasi ke ProfileScreen jika ada
-                // Navigator.push(...);
-              },
-            ),
-          ],
-        ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.favorite),
+            label: 'Favorites',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
       ),
     );
   }

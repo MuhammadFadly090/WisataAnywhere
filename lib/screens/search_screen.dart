@@ -29,12 +29,13 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() => _isLoading = true);
     
     try {
+      // Case-insensitive search by converting both query and title to lowercase
       final result = await FirebaseFirestore.instance
           .collection('posts')
-          .where('title', isGreaterThanOrEqualTo: query)
-          .where('title', isLessThan: query + 'z')
-          .orderBy('title')
-          .limit(10)
+          .where('titleLowercase', isGreaterThanOrEqualTo: query.toLowerCase())
+          .where('titleLowercase', isLessThan: query.toLowerCase() + 'z')
+          .orderBy('titleLowercase')
+          .limit(20)
           .get();
 
       return result.docs.map((doc) {
@@ -90,14 +91,13 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       body: Column(
         children: [
-          // Auto-search as user types (remove the search button)
           Expanded(
             child: FutureBuilder<List<Map<String, dynamic>>>(
               future: _searchPosts(_searchText),
               builder: (context, snapshot) {
                 if (_searchText.isEmpty) {
                   return const Center(
-                    child: Text('Enter a title to search'),
+                    child: Text('Enter a title to search posts'),
                   );
                 }
 
@@ -106,7 +106,19 @@ class _SearchScreenState extends State<SearchScreen> {
                 }
 
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('No posts found'));
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.search_off, size: 50, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No posts found for "${_searchText}"',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ],
+                    ),
+                  );
                 }
 
                 final posts = snapshot.data!;
@@ -118,26 +130,55 @@ class _SearchScreenState extends State<SearchScreen> {
                     return Card(
                       margin: const EdgeInsets.all(8),
                       child: ListTile(
-                        title: Text(post['title']),
+                        contentPadding: const EdgeInsets.all(12),
+                        title: Text(
+                          post['title'],
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(post['description']),
+                            if (post['description'] != null && post['description'].isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                                child: Text(
+                                  post['description'],
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             const SizedBox(height: 4),
                             Text(
-                              'Posted by ${post['fullName']} on ${_formatDate(post['createdAt'])}',
-                              style: Theme.of(context).textTheme.bodySmall,
+                              'Posted by ${post['fullName']} • ${_formatDate(post['createdAt'])}',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         ),
                         leading: post['image'] != null
-                            ? Image.memory(
-                                base64Decode(post['image']),
-                                width: 50,
-                                height: 50,
-                                fit: BoxFit.cover,
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.memory(
+                                  base64Decode(post['image']),
+                                  width: 60,
+                                  height: 60,
+                                  fit: BoxFit.cover,
+                                ),
                               )
-                            : const Icon(Icons.image),
+                            : Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.image, color: Colors.grey),
+                              ),
                         onTap: () {
                           Navigator.push(
                             context,
@@ -145,6 +186,7 @@ class _SearchScreenState extends State<SearchScreen> {
                               builder: (context) => DetailPostScreen(
                                 postId: post['id'],
                                 imageBase64: post['image'],
+                                title: post['title'], // Tambahkan title
                                 description: post['description'],
                                 createdAt: post['createdAt'],
                                 fullName: post['fullName'],
