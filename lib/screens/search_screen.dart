@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:fasum/screens/detail_screen.dart'; 
+import 'package:wisataAnywhere/screens/detail_screen.dart'; 
 import 'package:intl/intl.dart'; 
 
 class SearchScreen extends StatefulWidget {
@@ -32,7 +32,7 @@ class _SearchScreenState extends State<SearchScreen> {
       final result = await FirebaseFirestore.instance
           .collection('posts')
           .where('title', isGreaterThanOrEqualTo: query)
-          .where('title', isLessThan: query + 'z')
+          .where('title', isLessThan: '${query}z')
           .orderBy('title')
           .limit(10)
           .get();
