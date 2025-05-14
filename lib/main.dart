@@ -1,12 +1,12 @@
-import 'package:fasum/screens/sign_in_screen.dart';
+import 'package:wisataAnywhere/screens/sign_in_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:fasum/screens/splash_screen.dart';
+import 'package:wisataAnywhere/screens/splash_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:fasum/firebase_options.dart';
-import 'package:fasum/screens/home_screens.dart';
+import 'package:wisataAnywhere/firebase_options.dart';
+import 'package:wisataAnywhere/screens/home_screens.dart';
 import 'package:provider/provider.dart';
-import 'package:fasum/screens/theme_provider.dart'; 
+import 'package:wisataAnywhere/screens/theme_provider.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,14 +46,12 @@ class MyApp extends StatelessWidget {
           seedColor: Colors.lightBlue,
           brightness: Brightness.light,
         ),
-        useMaterial3: true,
       ),
       darkTheme: ThemeData.dark().copyWith(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.lightBlue,
           brightness: Brightness.dark,
         ),
-        useMaterial3: true,
       ),
       themeMode: themeProvider.themeMode,
       home: const AuthWrapper(),

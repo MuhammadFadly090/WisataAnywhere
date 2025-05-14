@@ -4,12 +4,12 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fasum/screens/add_post_screen.dart';
-import 'package:fasum/screens/detail_screen.dart';
-import 'package:fasum/screens/sign_in_screen.dart';
-import 'package:fasum/screens/theme_provider.dart'; 
-import 'package:fasum/screens/favorite_screen.dart'; 
-import 'package:fasum/screens/search_screen.dart';
+import 'package:wisataAnywhere/screens/add_post_screen.dart';
+import 'package:wisataAnywhere/screens/detail_screen.dart';
+import 'package:wisataAnywhere/screens/sign_in_screen.dart';
+import 'package:wisataAnywhere/screens/theme_provider.dart'; 
+import 'package:wisataAnywhere/screens/favorite_screen.dart'; 
+import 'package:wisataAnywhere/screens/search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

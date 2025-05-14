@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:fasum/screens/detail_screen.dart'; 
+import 'package:wisataAnywhere/screens/detail_screen.dart'; 
 import 'package:intl/intl.dart'; 
 
 class SearchScreen extends StatefulWidget {
@@ -32,10 +32,10 @@ class _SearchScreenState extends State<SearchScreen> {
       // Case-insensitive search by converting both query and title to lowercase
       final result = await FirebaseFirestore.instance
           .collection('posts')
-          .where('titleLowercase', isGreaterThanOrEqualTo: query.toLowerCase())
-          .where('titleLowercase', isLessThan: query.toLowerCase() + 'z')
-          .orderBy('titleLowercase')
-          .limit(20)
+          .where('title', isGreaterThanOrEqualTo: query)
+          .where('title', isLessThan: query + 'z')
+          .orderBy('title')
+          .limit(10)
           .get();
 
       return result.docs.map((doc) {
