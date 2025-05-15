@@ -120,40 +120,48 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   }
 
   Future<void> _toggleLike() async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in to like posts')),
-      );
-      return;
-    }
+  final currentUser = FirebaseAuth.instance.currentUser;
+  if (currentUser == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Please sign in to like posts')),
+    );
+    return;
+  }
 
-    setState(() {
-      isLiked = !isLiked;
-    });
+  setState(() => isLiked = !isLiked);
 
+  try {
     if (isLiked) {
+      // Add to favorites
       await FirebaseFirestore.instance.collection('favorites').add({
         'userId': currentUser.uid,
         'postId': widget.postId,
-        'createdAt': DateTime.now().toIso8601String(),
+        'createdAt': FieldValue.serverTimestamp(),
         'fullName': widget.fullName,
         'title': widget.title,
         'description': widget.description,
         'image': widget.imageBase64,
+        'originalPostCreatedAt': widget.createdAt.toIso8601String(),
       });
     } else {
-      final doc = await FirebaseFirestore.instance
+      // Remove from favorites
+      final query = await FirebaseFirestore.instance
           .collection('favorites')
           .where('userId', isEqualTo: currentUser.uid)
           .where('postId', isEqualTo: widget.postId)
           .get();
 
-      for (var document in doc.docs) {
-        await document.reference.delete();
+      for (var doc in query.docs) {
+        await doc.reference.delete();
       }
     }
+  } catch (e) {
+    setState(() => isLiked = !isLiked); // Revert on error
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error: ${e.toString()}')),
+    );
   }
+}
 
   Future<void> _addComment() async {
     if (_commentController.text.trim().isEmpty) return;

@@ -10,7 +10,7 @@ import 'package:wisataAnywhere/screens/sign_in_screen.dart';
 import 'package:wisataAnywhere/screens/theme_provider.dart';
 import 'package:wisataAnywhere/screens/favorite_screen.dart';
 import 'package:wisataAnywhere/screens/search_screen.dart';
-import 'package:wisataAnywhere/screens/profile_screen.dart';
+// import 'package:wisataAnywhere/screens/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -104,13 +104,6 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('WisataAnywhere'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const SearchScreen()),
-            ),
-          ),
-          IconButton(
             icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
             onPressed: () => themeProvider.toggleTheme(!isDarkMode),
           ),
@@ -134,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const FavoriteScreen(),
           
           // Profile Page (Index 3)
-          const ProfileScreen(),
+          // const ProfileScreen(),
         ],
       ),
       floatingActionButton: FloatingActionButton(
