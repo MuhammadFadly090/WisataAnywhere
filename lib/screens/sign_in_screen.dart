@@ -256,7 +256,7 @@ class SignInScreenState extends State<SignInScreen> {
       case 'wrong-password':
         return 'Wrong password. Please try again.';
       default:
-        return 'maaf anda salah memasukan password. Silahkan coba lagi.';
+        return 'Please Try Again.';
     }
   }
 }
