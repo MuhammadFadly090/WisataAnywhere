@@ -15,7 +15,7 @@ class DetailPostScreen extends StatefulWidget {
   final String? description;
   final DateTime createdAt;
   final String fullName;
-  final String postId; // Perlu menambahkan postId untuk referensi ke database
+  final String postId;
 
   const DetailPostScreen({
     super.key,
@@ -68,7 +68,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     }
   }
 
-  // Memeriksa apakah post sudah disukai
   Future<void> _checkIfPostIsLiked() async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
@@ -89,70 +88,73 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     }
   }
 
-  // Mengambil komentar dari database
   Future<void> _fetchComments() async {
-    final commentsSnapshot = await FirebaseFirestore.instance
-        .collection('comments')
-        .where('postId', isEqualTo: widget.postId)
-        .orderBy('createdAt', descending: true)
-        .get();
+    print('Fetching comments for post: ${widget.postId}');
+    try {
+      final commentsSnapshot = await FirebaseFirestore.instance
+          .collection('comments')
+          .where('postId', isEqualTo: widget.postId)
+          .orderBy('createdAt', descending: true)
+          .get();
 
-    List<Map<String, dynamic>> fetchedComments = [];
-    for (var doc in commentsSnapshot.docs) {
-      final data = doc.data();
-      fetchedComments.add({
-        'id': doc.id,
-        'text': data['text'],
-        'userName': data['userName'],
-        'createdAt': (data['createdAt'] as Timestamp).toDate(),
+      print('Found ${commentsSnapshot.docs.length} comments');
+      
+      List<Map<String, dynamic>> fetchedComments = [];
+      for (var doc in commentsSnapshot.docs) {
+        print('Comment data: ${doc.data()}');
+        final data = doc.data();
+        fetchedComments.add({
+          'id': doc.id,
+          'text': data['text'],
+          'userName': data['userName'],
+          'createdAt': (data['createdAt'] as Timestamp).toDate(),
+        });
+      }
+
+      setState(() {
+        comments = fetchedComments;
       });
+    } catch (e) {
+      print('Error fetching comments: $e');
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to like posts')),
+      );
+      return;
     }
 
     setState(() {
-      comments = fetchedComments;
+      isLiked = !isLiked;
     });
-  }
 
-  // Menyimpan like ke database
-  Future<void> _toggleLike() async {
-  final currentUser = FirebaseAuth.instance.currentUser;
-  if (currentUser == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please sign in to like posts')),
-    );
-    return;
-  }
+    if (isLiked) {
+      await FirebaseFirestore.instance.collection('favorites').add({
+        'userId': currentUser.uid,
+        'postId': widget.postId,
+        'createdAt': DateTime.now().toIso8601String(),
+        'fullName': widget.fullName,
+        'title': widget.title,
+        'description': widget.description,
+        'image': widget.imageBase64,
+      });
+    } else {
+      final doc = await FirebaseFirestore.instance
+          .collection('favorites')
+          .where('userId', isEqualTo: currentUser.uid)
+          .where('postId', isEqualTo: widget.postId)
+          .get();
 
-  setState(() {
-    isLiked = !isLiked;
-  });
-
-  if (isLiked) {
-    // Tambahkan ke koleksi favorites
-    await FirebaseFirestore.instance.collection('favorites').add({
-      'userId': currentUser.uid,
-      'postId': widget.postId,
-      'createdAt': DateTime.now().toIso8601String(),
-      'fullName': widget.fullName,
-      'title': widget.title, // Tambahkan ini
-      'description': widget.description,
-      'image': widget.imageBase64,
-    });
-  } else {
-    // Hapus dari koleksi favorites
-    final doc = await FirebaseFirestore.instance
-        .collection('favorites')
-        .where('userId', isEqualTo: currentUser.uid)
-        .where('postId', isEqualTo: widget.postId)
-        .get();
-
-    for (var document in doc.docs) {
-      await document.reference.delete();
+      for (var document in doc.docs) {
+        await document.reference.delete();
+      }
     }
   }
-}
 
-  // Menyimpan komentar ke database
   Future<void> _addComment() async {
     if (_commentController.text.trim().isEmpty) return;
 
@@ -164,7 +166,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
       return;
     }
 
-    // Dapatkan nama user
     String userName = 'Anonymous';
     final userDoc = await FirebaseFirestore.instance
         .collection('users')
@@ -177,7 +178,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
       }
     }
 
-    // Simpan komentar ke database
     await FirebaseFirestore.instance.collection('comments').add({
       'postId': widget.postId,
       'userId': currentUser.uid,
@@ -186,55 +186,48 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
       'createdAt': Timestamp.now(),
     });
 
-    // Bersihkan text field dan update UI
     _commentController.clear();
     await _fetchComments();
   }
 
-  // Fungsi untuk berbagi
-  // Replace your current _sharePost() method with this updated version
-Future<void> _sharePost() async {
-  try {
-    String shareText = '${widget.title ?? 'Check this post'}\n\n${widget.description ?? ''}';
-    
-    if (widget.imageBase64 != null) {
-      // Simpan gambar sementara untuk dibagikan
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/shared_image.png');
+  Future<void> _sharePost() async {
+    try {
+      String shareText = '${widget.title ?? 'Check this post'}\n\n${widget.description ?? ''}';
       
-      final decodedBytes = base64Decode(widget.imageBase64!);
-      await file.writeAsBytes(decodedBytes);
-      
-      // Use the correct sharing method based on your share_plus version
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: shareText,
+      if (widget.imageBase64 != null) {
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/shared_image.png');
+        
+        final decodedBytes = base64Decode(widget.imageBase64!);
+        await file.writeAsBytes(decodedBytes);
+        
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          text: shareText,
+        );
+      } else {
+        await Share.share(shareText);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to share: $e')),
       );
-    } else {
-      // Hanya bagikan teks jika tidak ada gambar
-      await Share.share(shareText);
     }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Failed to share: $e')),
-    );
   }
-}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          title: Text(widget.title ?? "Detail Post"), 
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        ),
+      appBar: AppBar(
+        title: Text(widget.title ?? "Detail Post"), 
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
       body: isLoading 
         ? const Center(child: CircularProgressIndicator()) 
         : SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Image with full height
                 if (widget.imageBase64 != null)
                   Image.memory(
                     base64Decode(widget.imageBase64!),
@@ -242,13 +235,11 @@ Future<void> _sharePost() async {
                     width: double.infinity,
                   ),
                 
-                // Post details
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // User and time info
                       Row(
                         children: [
                           const CircleAvatar(
@@ -280,7 +271,6 @@ Future<void> _sharePost() async {
                       
                       const SizedBox(height: 16),
 
-                      // Title - Tambahkan bagian ini
                       if (widget.title != null && widget.title!.isNotEmpty)
                           Text(
                             widget.title!,
@@ -292,7 +282,6 @@ Future<void> _sharePost() async {
                       
                       const SizedBox(height: 8),
                       
-                      // Description
                       if (widget.description != null && widget.description!.isNotEmpty)
                         Text(
                           widget.description!,
@@ -301,11 +290,9 @@ Future<void> _sharePost() async {
                         
                       const SizedBox(height: 20),
                       
-                      // Interaction buttons
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          // Like button
                           GestureDetector(
                             onTap: _toggleLike,
                             child: Column(
@@ -325,7 +312,6 @@ Future<void> _sharePost() async {
                             ),
                           ),
                           
-                          // Comment button
                           GestureDetector(
                             onTap: () {
                               setState(() {
@@ -341,7 +327,6 @@ Future<void> _sharePost() async {
                             ),
                           ),
                           
-                          // Share button
                           GestureDetector(
                             onTap: _sharePost,
                             child: const Column(
@@ -355,12 +340,10 @@ Future<void> _sharePost() async {
                         ],
                       ),
                       
-                      // Comment section
                       if (_showCommentBox) ...[
                         const SizedBox(height: 16),
                         const Divider(),
                         
-                        // Comment input
                         Row(
                           children: [
                             Expanded(
@@ -382,7 +365,6 @@ Future<void> _sharePost() async {
                         
                         const SizedBox(height: 16),
                         
-                        // Comment list
                         ...comments.map((comment) => _buildCommentItem(comment)),
                         if (comments.isEmpty)
                           const Center(
