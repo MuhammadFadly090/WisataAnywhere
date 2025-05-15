@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:wisataAnywhere/screens/detail_screen.dart';
-import 'package:intl/intl.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -14,9 +12,9 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
-  String _searchText = '';
-  bool _isLoading = false;
-  List<Map<String, dynamic>> _searchResults = [];
+  List<DocumentSnapshot> _searchResults = [];
+  bool _isSearching = false;
+  String _searchQuery = '';
 
   @override
   void dispose() {
@@ -24,213 +22,286 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
+  // Format time for display
+  String _formatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final diff = now.difference(dateTime);
+
+    if (diff.inSeconds < 60) {
+      return '${diff.inSeconds} secs ago';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes} mins ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours} hrs ago';
+    } else if (diff.inHours < 48) {
+      return '1 day ago';
+    } else {
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    }
+  }
+
+  // Search posts by title
   Future<void> _searchPosts(String query) async {
+    setState(() {
+      _isSearching = true;
+      _searchQuery = query.toLowerCase();
+    });
+
     if (query.isEmpty) {
       setState(() {
         _searchResults = [];
-        _isLoading = false;
+        _isSearching = false;
       });
       return;
     }
 
-    setState(() => _isLoading = true);
-    
+    // Get all posts and filter by title
     try {
-      final result = await FirebaseFirestore.instance
+      final querySnapshot = await FirebaseFirestore.instance
           .collection('posts')
-          .where('title', isGreaterThanOrEqualTo: query)
-          .where('title', isLessThan: query + 'z')
-          .orderBy('title')
-          .limit(10)
+          .orderBy('createdAt', descending: true)
           .get();
 
-      final posts = result.docs.map((doc) {
+      final filteredDocs = querySnapshot.docs.where((doc) {
         final data = doc.data();
-        final createdAt = (data['createdAt'] as Timestamp).toDate();
-        return {
-          'id': doc.id,
-          'title': data['title'] ?? 'No Title',
-          'description': data['description'] ?? '',
-          'image': data['image'],
-          'fullName': data['fullName'] ?? 'Anonymous',
-          'createdAt': createdAt,
-        };
+        final title = (data['title'] as String?) ?? '';
+        return title.toLowerCase().contains(_searchQuery);
       }).toList();
 
       setState(() {
-        _searchResults = posts;
-        _isLoading = false;
+        _searchResults = filteredDocs;
+        _isSearching = false;
       });
     } catch (e) {
-      debugPrint('Search error: $e');
       setState(() {
-        _searchResults = [];
-        _isLoading = false;
+        _isSearching = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error searching: ${e.toString()}')),
-      );
+      _showErrorSnackBar('Error searching: $e');
     }
   }
 
-  String _formatDate(DateTime date) {
-    return DateFormat('dd MMM yyyy').format(date);
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  void _navigateToDetailScreen(
+    String postId,
+    String? imageBase64,
+    String? title,
+    String? description,
+    DateTime createdAt,
+    String fullName,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => DetailPostScreen(
+          postId: postId,
+          imageBase64: imageBase64,
+          title: title,
+          description: description,
+          createdAt: createdAt,
+          fullName: fullName,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final themeColor = Theme.of(context).primaryColor;
+
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Search posts...',
-            border: InputBorder.none,
-            suffixIcon: _searchText.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() {
-                        _searchText = '';
-                        _searchResults = [];
-                      });
-                    },
-                  )
-                : null,
-          ),
-          onChanged: (value) {
-            setState(() => _searchText = value.trim());
-            _searchPosts(value.trim());
-          },
-        ),
+        title: const Text('Search Posts'),
+        elevation: 0,
       ),
-      body: _buildSearchResults(),
+      body: Column(
+        children: [
+          // Search bar
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Theme.of(context).primaryColor.withOpacity(0.1),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search by title...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          _searchPosts('');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: isDarkMode ? Colors.grey[800] : Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onChanged: (value) {
+                _searchPosts(value);
+              },
+            ),
+          ),
+          
+          // Results
+          Expanded(
+            child: _isSearching 
+                ? const Center(child: CircularProgressIndicator())
+                : _searchResults.isEmpty && _searchQuery.isNotEmpty
+                    ? _buildEmptyResults(isDarkMode)
+                    : _buildSearchResults(isDarkMode, themeColor),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildSearchResults() {
-    if (_searchText.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search, size: 50, color: Colors.grey),
-            SizedBox(height: 16),
-            Text(
-              'Search for posts by title',
-              style: TextStyle(fontSize: 16),
+  Widget _buildEmptyResults(bool isDarkMode) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.search_off,
+            size: 64,
+            color: isDarkMode ? Colors.grey[400] : Colors.grey,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No posts found with title "$_searchQuery"',
+            style: TextStyle(
+              fontSize: 16,
+              color: isDarkMode ? Colors.white : Colors.black,
             ),
-          ],
-        ),
-      );
-    }
+          ),
+        ],
+      ),
+    );
+  }
 
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_searchResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.search_off, size: 50, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              'No results found for "$_searchText"',
-              style: const TextStyle(fontSize: 16),
-            ),
-          ],
-        ),
-      );
-    }
-
+  Widget _buildSearchResults(bool isDarkMode, Color themeColor) {
     return ListView.builder(
       padding: const EdgeInsets.all(8),
       itemCount: _searchResults.length,
       itemBuilder: (context, index) {
-        final post = _searchResults[index];
+        final postDoc = _searchResults[index];
+        final postId = postDoc.id;
+        final data = postDoc.data() as Map<String, dynamic>;
+        final imageBase64 = data['image'] as String?;
+        final title = data['title'] as String? ?? 'Untitled';
+        final description = data['description'] as String? ?? '';
+        final createdAtStr = data['createdAt'] as String;
+        final fullName = data['fullName'] as String? ?? 'Anonymous';
+        final createdAt = DateTime.parse(createdAtStr);
+
         return Card(
-          margin: const EdgeInsets.symmetric(vertical: 8),
+          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => DetailPostScreen(
-                    postId: post['id'],
-                    imageBase64: post['image'],
-                    title: post['title'],
-                    description: post['description'],
-                    createdAt: post['createdAt'],
-                    fullName: post['fullName'],
-                  ),
-                ),
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (post['image'] != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.memory(
-                        base64Decode(post['image']),
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                      ),
-                    )
-                  else
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.image, color: Colors.grey),
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _navigateToDetailScreen(
+              postId, imageBase64, title, description, createdAt, fullName),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (imageBase64 != null)
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(12)),
+                    child: Image.memory(
+                      base64Decode(imageBase64),
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: 200,
                     ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          post['title'],
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundColor: themeColor.withOpacity(0.2),
+                            child: Icon(
+                              Icons.person,
+                              size: 16,
+                              color: themeColor,
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                fullName,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isDarkMode 
+                                      ? Colors.white 
+                                      : Colors.black,
+                                ),
+                              ),
+                              Text(
+                                _formatTime(createdAt),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDarkMode 
+                                      ? Colors.grey[400] 
+                                      : Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isDarkMode 
+                              ? Colors.white 
+                              : Colors.black,
                         ),
-                        const SizedBox(height: 4),
-                        if (post['description'].isNotEmpty)
-                          Text(
-                            post['description'],
+                      ),
+                      if (description.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            description,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: Colors.grey[700],
+                              fontSize: 14,
+                              color: isDarkMode 
+                                  ? Colors.grey[300] 
+                                  : Colors.grey[700],
                             ),
                           ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Posted by ${post['fullName']} • ${_formatDate(post['createdAt'])}',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 12,
-                          ),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         );
