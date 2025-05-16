@@ -8,6 +8,8 @@ import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class DetailPostScreen extends StatefulWidget {
   final String? imageBase64;
@@ -37,6 +39,8 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   bool _showCommentBox = false;
   List<Map<String, dynamic>> comments = [];
   bool isLoading = true;
+  String? currentLocation;
+  bool isGettingLocation = false;
 
   @override
   void initState() {
@@ -120,48 +124,48 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   }
 
   Future<void> _toggleLike() async {
-  final currentUser = FirebaseAuth.instance.currentUser;
-  if (currentUser == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please sign in to like posts')),
-    );
-    return;
-  }
-
-  setState(() => isLiked = !isLiked);
-
-  try {
-    if (isLiked) {
-      // Add to favorites
-      await FirebaseFirestore.instance.collection('favorites').add({
-        'userId': currentUser.uid,
-        'postId': widget.postId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'fullName': widget.fullName,
-        'title': widget.title,
-        'description': widget.description,
-        'image': widget.imageBase64,
-        'originalPostCreatedAt': widget.createdAt.toIso8601String(),
-      });
-    } else {
-      // Remove from favorites
-      final query = await FirebaseFirestore.instance
-          .collection('favorites')
-          .where('userId', isEqualTo: currentUser.uid)
-          .where('postId', isEqualTo: widget.postId)
-          .get();
-
-      for (var doc in query.docs) {
-        await doc.reference.delete();
-      }
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to like posts')),
+      );
+      return;
     }
-  } catch (e) {
-    setState(() => isLiked = !isLiked); // Revert on error
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error: ${e.toString()}')),
-    );
+
+    setState(() => isLiked = !isLiked);
+
+    try {
+      if (isLiked) {
+        // Add to favorites
+        await FirebaseFirestore.instance.collection('favorites').add({
+          'userId': currentUser.uid,
+          'postId': widget.postId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'fullName': widget.fullName,
+          'title': widget.title,
+          'description': widget.description,
+          'image': widget.imageBase64,
+          'originalPostCreatedAt': widget.createdAt.toIso8601String(),
+        });
+      } else {
+        // Remove from favorites
+        final query = await FirebaseFirestore.instance
+            .collection('favorites')
+            .where('userId', isEqualTo: currentUser.uid)
+            .where('postId', isEqualTo: widget.postId)
+            .get();
+
+        for (var doc in query.docs) {
+          await doc.reference.delete();
+        }
+      }
+    } catch (e) {
+      setState(() => isLiked = !isLiked); // Revert on error
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    }
   }
-}
 
   Future<void> _addComment() async {
     if (_commentController.text.trim().isEmpty) return;
@@ -223,6 +227,90 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     }
   }
 
+  Future<void> _getCurrentLocation() async {
+    if (isGettingLocation) return; // Prevent multiple simultaneous requests
+    
+    setState(() {
+      isGettingLocation = true;
+      currentLocation = "Getting location...";
+    });
+
+    try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          currentLocation = "Location services are disabled";
+          isGettingLocation = false;
+        });
+        return;
+      }
+
+      // Check for location permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            currentLocation = "Location permissions are denied";
+            isGettingLocation = false;
+          });
+          return;
+        }
+      }
+      
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          currentLocation = "Location permissions are permanently denied";
+          isGettingLocation = false;
+        });
+        return;
+      }
+
+      // Get the current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high
+      );
+      
+      // Get address from coordinates
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude, 
+        position.longitude
+      );
+      
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks[0];
+        setState(() {
+          currentLocation = '${place.street}, ${place.locality}, ${place.country}';
+          isGettingLocation = false;
+        });
+        
+        // Save the location to Firestore for this post
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser != null) {
+          await FirebaseFirestore.instance.collection('post_locations').add({
+            'postId': widget.postId,
+            'userId': currentUser.uid,
+            'latitude': position.latitude,
+            'longitude': position.longitude,
+            'address': currentLocation,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+      } else {
+        setState(() {
+          currentLocation = 'Lat: ${position.latitude}, Long: ${position.longitude}';
+          isGettingLocation = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        currentLocation = "Error getting location: $e";
+        isGettingLocation = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -237,10 +325,74 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (widget.imageBase64 != null)
-                  Image.memory(
-                    base64Decode(widget.imageBase64!),
-                    fit: BoxFit.cover,
+                  GestureDetector(
+                    onTap: _getCurrentLocation,
+                    child: Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        Image.memory(
+                          base64Decode(widget.imageBase64!),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          margin: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.location_on, color: Colors.white, size: 16),
+                              SizedBox(width: 4),
+                              Text(
+                                'Get location',
+                                style: TextStyle(color: Colors.white, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                
+                if (currentLocation != null)
+                  Container(
                     width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    color: Colors.grey.shade100,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.location_on, size: 16, color: Colors.red),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Location:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                currentLocation!,
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (isGettingLocation)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8.0),
+                            child: LinearProgressIndicator(),
+                          ),
+                      ],
+                    ),
                   ),
                 
                 Padding(

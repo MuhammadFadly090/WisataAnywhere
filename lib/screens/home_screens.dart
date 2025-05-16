@@ -10,7 +10,7 @@ import 'package:wisataAnywhere/screens/sign_in_screen.dart';
 import 'package:wisataAnywhere/screens/theme_provider.dart';
 import 'package:wisataAnywhere/screens/favorite_screen.dart';
 import 'package:wisataAnywhere/screens/search_screen.dart';
-// import 'package:wisataAnywhere/screens/profile_screen.dart';
+import 'package:wisataAnywhere/screens/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -72,11 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-      _pageController.jumpToPage(index);
-    });
-
+    // Handle special cases for navigation to separate screens
     if (index == 1) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => const AddPostScreen()),
@@ -84,7 +80,24 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _selectedIndex = 0);
         _pageController.jumpToPage(0);
       });
+      return;
     }
+    
+    if (index == 3) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => const ProfileScreen()),
+      ).then((_) {
+        setState(() => _selectedIndex = 0);
+        _pageController.jumpToPage(0);
+      });
+      return;
+    }
+    
+    // Normal navigation for other tabs
+    setState(() {
+      _selectedIndex = index;
+      _pageController.jumpToPage(index == 3 ? 2 : index);
+    });
   }
 
   @override
@@ -126,8 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // Favorites Page (Index 2)
           const FavoriteScreen(),
           
-          // Profile Page (Index 3)
-          // const ProfileScreen(),
+          // Profile Page is handled separately via Navigator
         ],
       ),
       floatingActionButton: FloatingActionButton(
