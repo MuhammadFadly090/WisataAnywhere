@@ -1,3 +1,4 @@
+// Import yang dibutuhkan
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
@@ -6,10 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
 
 class DetailPostScreen extends StatefulWidget {
   final String? imageBase64;
@@ -18,6 +16,8 @@ class DetailPostScreen extends StatefulWidget {
   final DateTime createdAt;
   final String fullName;
   final String postId;
+  final double? latitude;
+  final double? longitude;
 
   const DetailPostScreen({
     super.key,
@@ -27,7 +27,49 @@ class DetailPostScreen extends StatefulWidget {
     required this.createdAt,
     required this.fullName,
     required this.postId,
+    this.latitude,
+    this.longitude,
   });
+
+  factory DetailPostScreen.fromDocument(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+
+    double? latitude;
+    double? longitude;
+    DateTime parsedCreatedAt;
+
+    if (data['createdAt'] is Timestamp) {
+      parsedCreatedAt = (data['createdAt'] as Timestamp).toDate();
+    } else if (data['createdAt'] is String) {
+      parsedCreatedAt = DateTime.tryParse(data['createdAt']) ?? DateTime.now();
+    } else {
+      parsedCreatedAt = DateTime.now();
+    }
+
+    try {
+      if (data['latitude'] != null) {
+        latitude = (data['latitude'] as num).toDouble();
+      }
+      if (data['longitude'] != null) {
+        longitude = (data['longitude'] as num).toDouble();
+      }
+    } catch (e) {
+      latitude = null;
+      longitude = null;
+      debugPrint('Invalid location data: $e');
+    }
+
+    return DetailPostScreen(
+      postId: doc.id,
+      imageBase64: data['image'],
+      title: data['title'],
+      description: data['description'],
+      createdAt: parsedCreatedAt,
+      fullName: data['fullName'] ?? 'Anonymous',
+      latitude: latitude,
+      longitude: longitude,
+    );
+  }
 
   @override
   State<DetailPostScreen> createState() => _DetailPostScreenState();
@@ -39,8 +81,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   bool _showCommentBox = false;
   List<Map<String, dynamic>> comments = [];
   bool isLoading = true;
-  String? currentLocation;
-  bool isGettingLocation = false;
 
   @override
   void initState() {
@@ -59,17 +99,11 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     final now = DateTime.now();
     final diff = now.difference(dateTime);
 
-    if (diff.inSeconds < 60) {
-      return '${diff.inSeconds} secs ago';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes} mins ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours} hrs ago';
-    } else if (diff.inHours < 48) {
-      return '1 day ago';
-    } else {
-      return DateFormat('dd/MM/yyyy').format(dateTime);
-    }
+    if (diff.inSeconds < 60) return '${diff.inSeconds} secs ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} mins ago';
+    if (diff.inHours < 24) return '${diff.inHours} hrs ago';
+    if (diff.inHours < 48) return '1 day ago';
+    return DateFormat('dd/MM/yyyy').format(dateTime);
   }
 
   Future<void> _checkIfPostIsLiked() async {
@@ -86,14 +120,11 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
         isLoading = false;
       });
     } else {
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
   }
 
   Future<void> _fetchComments() async {
-    print('Fetching comments for post: ${widget.postId}');
     try {
       final commentsSnapshot = await FirebaseFirestore.instance
           .collection('comments')
@@ -101,23 +132,17 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
           .orderBy('createdAt', descending: true)
           .get();
 
-      print('Found ${commentsSnapshot.docs.length} comments');
-      
-      List<Map<String, dynamic>> fetchedComments = [];
-      for (var doc in commentsSnapshot.docs) {
-        print('Comment data: ${doc.data()}');
+      List<Map<String, dynamic>> fetchedComments = commentsSnapshot.docs.map((doc) {
         final data = doc.data();
-        fetchedComments.add({
+        return {
           'id': doc.id,
           'text': data['text'],
           'userName': data['userName'],
           'createdAt': (data['createdAt'] as Timestamp).toDate(),
-        });
-      }
+        };
+      }).toList();
 
-      setState(() {
-        comments = fetchedComments;
-      });
+      setState(() => comments = fetchedComments);
     } catch (e) {
       print('Error fetching comments: $e');
     }
@@ -136,7 +161,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
 
     try {
       if (isLiked) {
-        // Add to favorites
         await FirebaseFirestore.instance.collection('favorites').add({
           'userId': currentUser.uid,
           'postId': widget.postId,
@@ -146,21 +170,21 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
           'description': widget.description,
           'image': widget.imageBase64,
           'originalPostCreatedAt': widget.createdAt.toIso8601String(),
+          'latitude': widget.latitude,
+          'longitude': widget.longitude,
         });
       } else {
-        // Remove from favorites
         final query = await FirebaseFirestore.instance
             .collection('favorites')
             .where('userId', isEqualTo: currentUser.uid)
             .where('postId', isEqualTo: widget.postId)
             .get();
-
         for (var doc in query.docs) {
           await doc.reference.delete();
         }
       }
     } catch (e) {
-      setState(() => isLiked = !isLiked); // Revert on error
+      setState(() => isLiked = !isLiked);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: ${e.toString()}')),
       );
@@ -205,18 +229,15 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   Future<void> _sharePost() async {
     try {
       String shareText = '${widget.title ?? 'Check this post'}\n\n${widget.description ?? ''}';
-      
+
       if (widget.imageBase64 != null) {
         final tempDir = await getTemporaryDirectory();
         final file = File('${tempDir.path}/shared_image.png');
-        
+
         final decodedBytes = base64Decode(widget.imageBase64!);
         await file.writeAsBytes(decodedBytes);
-        
-        await Share.shareXFiles(
-          [XFile(file.path)],
-          text: shareText,
-        );
+
+        await Share.shareXFiles([XFile(file.path)], text: shareText);
       } else {
         await Share.share(shareText);
       }
@@ -227,211 +248,60 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     }
   }
 
-  Future<void> _getCurrentLocation() async {
-    if (isGettingLocation) return; // Prevent multiple simultaneous requests
-    
-    setState(() {
-      isGettingLocation = true;
-      currentLocation = "Getting location...";
-    });
-
-    try {
-      // Check if location services are enabled
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        setState(() {
-          currentLocation = "Location services are disabled";
-          isGettingLocation = false;
-        });
-        return;
-      }
-
-      // Check for location permissions
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() {
-            currentLocation = "Location permissions are denied";
-            isGettingLocation = false;
-          });
-          return;
-        }
-      }
-      
-      if (permission == LocationPermission.deniedForever) {
-        setState(() {
-          currentLocation = "Location permissions are permanently denied";
-          isGettingLocation = false;
-        });
-        return;
-      }
-
-      // Get the current position
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high
-      );
-      
-      // Get address from coordinates
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude, 
-        position.longitude
-      );
-      
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks[0];
-        setState(() {
-          currentLocation = '${place.street}, ${place.locality}, ${place.country}';
-          isGettingLocation = false;
-        });
-        
-        // Save the location to Firestore for this post
-        final currentUser = FirebaseAuth.instance.currentUser;
-        if (currentUser != null) {
-          await FirebaseFirestore.instance.collection('post_locations').add({
-            'postId': widget.postId,
-            'userId': currentUser.uid,
-            'latitude': position.latitude,
-            'longitude': position.longitude,
-            'address': currentLocation,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-        }
-      } else {
-        setState(() {
-          currentLocation = 'Lat: ${position.latitude}, Long: ${position.longitude}';
-          isGettingLocation = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        currentLocation = "Error getting location: $e";
-        isGettingLocation = false;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title ?? "Detail Post"), 
+        title: Text(widget.title ?? "Detail Post"),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: isLoading 
-        ? const Center(child: CircularProgressIndicator()) 
-        : SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (widget.imageBase64 != null)
-                  GestureDetector(
-                    onTap: _getCurrentLocation,
-                    child: Stack(
-                      alignment: Alignment.bottomRight,
-                      children: [
-                        Image.memory(
-                          base64Decode(widget.imageBase64!),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          margin: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.location_on, color: Colors.white, size: 16),
-                              SizedBox(width: 4),
-                              Text(
-                                'Get location',
-                                style: TextStyle(color: Colors.white, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.imageBase64 != null)
+                    Image.memory(
+                      base64Decode(widget.imageBase64!),
+                      fit: BoxFit.cover,
+                      width: double.infinity,
                     ),
-                  ),
-                
-                if (currentLocation != null)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    color: Colors.grey.shade100,
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.location_on, size: 16, color: Colors.red),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Location:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
+                            const CircleAvatar(
+                              radius: 20,
+                              child: Icon(Icons.person),
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                currentLocation!,
-                                style: const TextStyle(fontSize: 14),
-                              ),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.fullName,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  formatTime(widget.createdAt),
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                        if (isGettingLocation)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 8.0),
-                            child: LinearProgressIndicator(),
-                          ),
-                      ],
-                    ),
-                  ),
-                
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const CircleAvatar(
-                            radius: 20,
-                            child: Icon(Icons.person),
-                          ),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.fullName,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                formatTime(widget.createdAt),
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 16),
-
-                      if (widget.title != null && widget.title!.isNotEmpty)
+                        const SizedBox(height: 16),
+                        if (widget.title != null && widget.title!.isNotEmpty)
                           Text(
                             widget.title!,
                             style: const TextStyle(
@@ -439,110 +309,135 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                      
-                      const SizedBox(height: 8),
-                      
-                      if (widget.description != null && widget.description!.isNotEmpty)
-                        Text(
-                          widget.description!,
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                        
-                      const SizedBox(height: 20),
-                      
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          GestureDetector(
-                            onTap: _toggleLike,
-                            child: Column(
-                              children: [
-                                Icon(
-                                  isLiked ? Icons.favorite : Icons.favorite_border,
-                                  color: isLiked ? Colors.red : null,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Like',
-                                  style: TextStyle(
-                                    color: isLiked ? Colors.red : Colors.black,
-                                  ),
-                                ),
-                              ],
-                            ),
+                        const SizedBox(height: 8),
+                        if (widget.description != null &&
+                            widget.description!.isNotEmpty)
+                          Text(
+                            widget.description!,
+                            style: const TextStyle(fontSize: 16),
                           ),
-                          
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _showCommentBox = !_showCommentBox;
-                              });
-                            },
-                            child: Column(
-                              children: [
-                                const Icon(Icons.comment_outlined),
-                                const SizedBox(height: 4),
-                                Text('Comment (${comments.length})'),
-                              ],
-                            ),
-                          ),
-                          
-                          GestureDetector(
-                            onTap: _sharePost,
-                            child: const Column(
-                              children: [
-                                Icon(Icons.share_outlined),
-                                SizedBox(height: 4),
-                                Text('Share'),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      if (_showCommentBox) ...[
                         const SizedBox(height: 16),
-                        const Divider(),
-                        
-                        Row(
+
+                        // ✅ Bagian untuk menampilkan latitude & longitude secara langsung
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _commentController,
-                                decoration: const InputDecoration(
-                                  hintText: 'Add a comment...',
-                                  border: OutlineInputBorder(),
-                                ),
-                                maxLines: 1,
+                            const Text(
+                              'Location:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.send),
-                              onPressed: _addComment,
+                            const SizedBox(height: 8),
+                            if (widget.latitude != null && widget.longitude != null)
+                              Text(
+                                'Latitude: ${widget.latitude!.toStringAsFixed(6)}, '
+                                'Longitude: ${widget.longitude!.toStringAsFixed(6)}',
+                                style: const TextStyle(fontSize: 16),
+                              )
+                            else
+                              const Text(
+                                'Location not available',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            const SizedBox(height: 16),
+                          ],
+                        ),
+
+                        // Tombol Like, Comment, Share
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            GestureDetector(
+                              onTap: _toggleLike,
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    isLiked ? Icons.favorite : Icons.favorite_border,
+                                    color: isLiked ? Colors.red : null,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Like',
+                                    style: TextStyle(
+                                      color: isLiked ? Colors.red : Colors.black,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _showCommentBox = !_showCommentBox;
+                                });
+                              },
+                              child: Column(
+                                children: [
+                                  const Icon(Icons.comment_outlined),
+                                  const SizedBox(height: 4),
+                                  Text('Comment (${comments.length})'),
+                                ],
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: _sharePost,
+                              child: const Column(
+                                children: [
+                                  Icon(Icons.share_outlined),
+                                  SizedBox(height: 4),
+                                  Text('Share'),
+                                ],
+                              ),
                             ),
                           ],
                         ),
-                        
-                        const SizedBox(height: 16),
-                        
-                        ...comments.map((comment) => _buildCommentItem(comment)),
-                        if (comments.isEmpty)
-                          const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16.0),
-                              child: Text('No comments yet. Be the first to comment!'),
-                            ),
+
+                        // Komentar
+                        if (_showCommentBox) ...[
+                          const SizedBox(height: 16),
+                          const Divider(),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _commentController,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Add a comment...',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  maxLines: 1,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.send),
+                                onPressed: _addComment,
+                              ),
+                            ],
                           ),
+                          const SizedBox(height: 16),
+                          ...comments.map((comment) => _buildCommentItem(comment)),
+                          if (comments.isEmpty)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: Text('No comments yet. Be the first to comment!'),
+                              ),
+                            ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
     );
   }
-  
+
   Widget _buildCommentItem(Map<String, dynamic> comment) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -561,21 +456,18 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                 Row(
                   children: [
                     Text(
-                      comment['userName'],
+                      comment['userName'] ?? 'Anonymous',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       formatTime(comment['createdAt']),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(comment['text']),
+                Text(comment['text'] ?? ''),
               ],
             ),
           ),
