@@ -38,3 +38,7 @@ flutter:
   assets:
     - assets/1.png
     - assets/2.png
+flutter_icons:
+  android: true
+  ios: true
+  image_path: assets/2.png
