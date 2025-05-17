@@ -1,8 +1,6 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:wisataAnywhere/screens/home_screens.dart';
-import 'package:wisataAnywhere/screens/sign_up_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -18,9 +16,8 @@ class SignInScreenState extends State<SignInScreen> {
   bool _isLoading = false;
   bool _isPasswordVisible = false;
 
-  // Warna yang diperbarui
-  final Color primaryBlue = const Color(0xFF2196F3); // Warna biru primer untuk tema
-  final Color accentRed = const Color(0xFFE53935);   // Warna merah untuk tombol
+  final Color primaryBlue = const Color(0xFF2196F3);
+  final Color accentRed = const Color(0xFFE53935);
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +39,7 @@ class SignInScreenState extends State<SignInScreen> {
         appBar: AppBar(
           title: const Text('Login', style: TextStyle(color: Colors.white)),
           backgroundColor: primaryBlue,
+          iconTheme: const IconThemeData(color: Colors.white),
         ),
         body: Container(
           decoration: BoxDecoration(
@@ -68,17 +66,16 @@ class SignInScreenState extends State<SignInScreen> {
                     child: Form(
                       key: _formKey,
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const Icon(
-                            Icons.account_circle,
+                            Icons.login,
                             size: 70,
                             color: Color(0xFF2196F3),
                           ),
                           const SizedBox(height: 16.0),
                           const Text(
-                            'Selamat Datang Kembali',
+                            'Masuk ke Akun Anda',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 22.0,
@@ -99,7 +96,7 @@ class SignInScreenState extends State<SignInScreen> {
                               if (value == null ||
                                   value.isEmpty ||
                                   !_isValidEmail(value)) {
-                                return 'Please enter a valid email';
+                                return 'Harap masukkan email yang valid';
                               }
                               return null;
                             },
@@ -107,7 +104,6 @@ class SignInScreenState extends State<SignInScreen> {
                           const SizedBox(height: 16.0),
                           TextFormField(
                             controller: _passwordController,
-                            obscureText: !_isPasswordVisible,
                             decoration: InputDecoration(
                               labelText: 'Password',
                               border: const OutlineInputBorder(),
@@ -125,38 +121,23 @@ class SignInScreenState extends State<SignInScreen> {
                                 },
                               ),
                             ),
+                            obscureText: !_isPasswordVisible,
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return 'Please enter your password';
+                                return 'Harap masukkan password';
                               }
                               return null;
                             },
                           ),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: () {
-                                // TODO: Implementasi lupa password
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Fitur reset password akan segera hadir'),
-                                  ),
-                                );
-                              },
-                              child: Text(
-                                'Lupa Password?',
-                                style: TextStyle(color: primaryBlue),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16.0),
+                          const SizedBox(height: 24.0),
                           _isLoading
                               ? const Center(child: CircularProgressIndicator())
                               : ElevatedButton(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: accentRed,
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 16.0),
                                     textStyle: const TextStyle(
                                       fontSize: 16.0,
                                       fontWeight: FontWeight.bold,
@@ -168,34 +149,31 @@ class SignInScreenState extends State<SignInScreen> {
                                   onPressed: _signIn,
                                   child: const Text('LOGIN'),
                                 ),
-                          const SizedBox(height: 24.0),
-                          RichText(
-                            textAlign: TextAlign.center,
-                            text: TextSpan(
-                              style: TextStyle(
-                                fontSize: 16.0,
-                                color: Colors.grey[700],
+                          const SizedBox(height: 16.0),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Belum punya akun?',
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontSize: 16.0,
+                                ),
                               ),
-                              children: [
-                                const TextSpan(text: "Belum punya akun? "),
-                                TextSpan(
-                                  text: "Daftar Sekarang",
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                },
+                                child: Text(
+                                  'Daftar Sekarang',
                                   style: TextStyle(
                                     color: primaryBlue,
                                     fontWeight: FontWeight.bold,
+                                    fontSize: 16.0,
                                   ),
-                                  recognizer: TapGestureRecognizer()
-                                    ..onTap = () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => const SignUpScreen(),
-                                        ),
-                                      );
-                                    },
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -211,34 +189,34 @@ class SignInScreenState extends State<SignInScreen> {
   }
 
   void _signIn() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
+    if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
+
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
       );
-      Navigator.of(context).pushReplacement(
+      Navigator.pushAndRemoveUntil(
+        context,
         MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (route) => false,
       );
     } on FirebaseAuthException catch (error) {
-      _showSnackBar(_getAuthErrorMessage(error.code));
+      _showErrorMessage(_getAuthErrorMessage(error.code));
     } catch (error) {
-      _showSnackBar('An error occurred: $error');
+      _showErrorMessage('Terjadi kesalahan: $error');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  void _showSnackBar(String message) {
+  void _showErrorMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: const Color(0xFFE53935),
+        backgroundColor: accentRed,
       ),
     );
   }
@@ -252,11 +230,22 @@ class SignInScreenState extends State<SignInScreen> {
   String _getAuthErrorMessage(String code) {
     switch (code) {
       case 'user-not-found':
-        return 'No user found with that email';
+        return 'Pengguna tidak ditemukan.';
       case 'wrong-password':
-        return 'Wrong password. Please try again.';
+        return 'Password salah.';
+      case 'invalid-email':
+        return 'Format email tidak valid.';
+      case 'user-disabled':
+        return 'Akun pengguna telah dinonaktifkan.';
       default:
-        return 'Please Try Again.';
+        return 'Terjadi kesalahan. Silakan coba lagi.';
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 }

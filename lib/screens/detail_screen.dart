@@ -1,13 +1,14 @@
-// Import yang dibutuhkan
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dart:convert';
-import 'package:intl/intl.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:share_plus/share_plus.dart';
 import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:geolocator/geolocator.dart';
+
 import 'package:wisataAnywhere/screens/check_location.dart';
 
 class DetailPostScreen extends StatefulWidget {
@@ -19,20 +20,19 @@ class DetailPostScreen extends StatefulWidget {
   final String postId;
 
   const DetailPostScreen({
-    super.key,
+    Key? key,
     required this.title,
     required this.imageBase64,
     required this.description,
     required this.createdAt,
     required this.fullName,
     required this.postId,
-  });
+  }) : super(key: key);
 
   factory DetailPostScreen.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
     DateTime parsedCreatedAt;
-
     if (data['createdAt'] is Timestamp) {
       parsedCreatedAt = (data['createdAt'] as Timestamp).toDate();
     } else if (data['createdAt'] is String) {
@@ -57,10 +57,11 @@ class DetailPostScreen extends StatefulWidget {
 
 class _DetailPostScreenState extends State<DetailPostScreen> {
   bool isLiked = false;
-  final TextEditingController _commentController = TextEditingController();
-  bool _showCommentBox = false;
-  List<Map<String, dynamic>> comments = [];
   bool isLoading = true;
+  bool _showCommentBox = false;
+
+  final TextEditingController _commentController = TextEditingController();
+  List<Map<String, dynamic>> comments = [];
 
   @override
   void initState() {
@@ -112,7 +113,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
           .orderBy('createdAt', descending: true)
           .get();
 
-      List<Map<String, dynamic>> fetchedComments = commentsSnapshot.docs.map((doc) {
+      final fetchedComments = commentsSnapshot.docs.map((doc) {
         final data = doc.data();
         return {
           'id': doc.id,
@@ -150,7 +151,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
           'description': widget.description,
           'image': widget.imageBase64,
           'originalPostCreatedAt': widget.createdAt.toIso8601String(),
-          // latitude & longitude dihapus
         });
       } else {
         final query = await FirebaseFirestore.instance
@@ -158,6 +158,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
             .where('userId', isEqualTo: currentUser.uid)
             .where('postId', isEqualTo: widget.postId)
             .get();
+
         for (var doc in query.docs) {
           await doc.reference.delete();
         }
@@ -186,6 +187,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
         .collection('users')
         .doc(currentUser.uid)
         .get();
+
     if (userDoc.exists) {
       final userData = userDoc.data();
       if (userData != null && userData['fullName'] != null) {
@@ -207,7 +209,35 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
 
   Future<void> _sharePost() async {
     try {
-      String shareText = '${widget.title ?? 'Check this post'}\n\n${widget.description ?? ''}';
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please sign in to share posts')),
+        );
+        return;
+      }
+
+      // Minta izin lokasi dan dapatkan lokasi saat ini
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission is required to share location')),
+          );
+          return;
+        }
+      }
+
+      final position = await Geolocator.getCurrentPosition();
+
+      final googleMapsUrl =
+          'https://maps.google.com/?q=${position.latitude},${position.longitude}';
+
+      String shareText =
+          '${widget.title ?? 'Check this post'}\n\n${widget.description ?? ''}\n\nLocation: $googleMapsUrl';
 
       if (widget.imageBase64 != null) {
         final tempDir = await getTemporaryDirectory();
@@ -256,13 +286,14 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => CheckLocationScreen(postId: widget.postId),
+                                  builder: (context) =>
+                                      CheckLocationScreen(postId: widget.postId),
                                 ),
                               );
                             },
                             child: Container(
                               padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
+                              decoration: const BoxDecoration(
                                 color: Colors.black54,
                                 shape: BoxShape.circle,
                               ),
@@ -319,17 +350,12 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                             ),
                           ),
                         const SizedBox(height: 8),
-                        if (widget.description != null &&
-                            widget.description!.isNotEmpty)
+                        if (widget.description != null && widget.description!.isNotEmpty)
                           Text(
                             widget.description!,
                             style: const TextStyle(fontSize: 16),
                           ),
                         const SizedBox(height: 16),
-
-                        // Bagian location dihapus
-
-                        // Tombol Like, Comment, Share
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
@@ -377,8 +403,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                             ),
                           ],
                         ),
-
-                        // Komentar
                         if (_showCommentBox) ...[
                           const SizedBox(height: 16),
                           const Divider(),
@@ -392,6 +416,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                                     border: OutlineInputBorder(),
                                   ),
                                   maxLines: 1,
+                                  maxLength: 200,
                                 ),
                               ),
                               IconButton(
@@ -401,7 +426,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          ...comments.map((comment) => _buildCommentItem(comment)),
+                          ...comments.map(_buildCommentItem),
                           if (comments.isEmpty)
                             const Center(
                               child: Padding(

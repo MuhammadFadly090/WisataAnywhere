@@ -21,11 +21,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
+
   bool _isLoading = false;
   bool _isPasswordChangeVisible = false;
   bool _obscureCurrentPassword = true;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isEditing = false;
 
   String? _fullName;
   String? _email;
@@ -46,6 +50,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
+    _fullNameController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
@@ -55,15 +61,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         _email = user.email;
+        _emailController.text = _email ?? '';
+
         final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         final data = doc.data();
         if (data != null) {
           _fullName = data['fullName'];
           _photoBase64 = data['photoBase64'];
+          _fullNameController.text = _fullName ?? '';
         }
       }
     } catch (e) {
       debugPrint('Failed to load user data: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _updateProfile() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _successMessage = null;
+    });
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Update Firestore
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+          'fullName': _fullNameController.text,
+        });
+
+        // Update email jika berubah
+        if (_emailController.text != user.email) {
+          await user.updateEmail(_emailController.text);
+        }
+
+        setState(() {
+          _fullName = _fullNameController.text;
+          _email = _emailController.text;
+          _successMessage = 'Profile updated successfully.';
+        });
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() => _errorMessage = e.message ?? 'Failed to update email.');
+    } catch (e) {
+      setState(() => _errorMessage = 'Unexpected error occurred.');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -196,61 +240,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final isDarkMode = themeProvider.themeMode == ThemeMode.dark;
-    final themeColor = Theme.of(context).primaryColor;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Profile'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Center(child: _buildProfileImage(themeColor)),
-                  const SizedBox(height: 16),
-                  Text(
-                    _fullName ?? 'User',
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Email Card
-                  Card(
-                    margin: const EdgeInsets.only(top: 24),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Account Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 12),
-                          _buildInfoRow(icon: Icons.person, title: 'Full Name', value: _fullName ?? 'Not set', themeColor: themeColor),
-                          const Divider(),
-                          _buildInfoRow(icon: Icons.email, title: 'Email Address', value: _email ?? 'Not available', themeColor: themeColor),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Password Change Section (tetap dari kode kamu sebelumnya)
-                  const SizedBox(height: 24),
-                  _buildPasswordSection(themeColor),
-                ],
-              ),
-            ),
-    );
-  }
-
   Widget _buildPasswordSection(Color themeColor) {
     return Card(
       child: Padding(
@@ -326,28 +315,105 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildInfoRow({
-    required IconData icon,
-    required String title,
-    required String value,
-    required Color themeColor,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, color: themeColor),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 4),
-              Text(value, style: const TextStyle(fontSize: 16)),
-            ],
-          ),
-        ],
+  @override
+  Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.themeMode == ThemeMode.dark;
+    final themeColor = Theme.of(context).primaryColor;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Profile'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Center(child: _buildProfileImage(themeColor)),
+                  const SizedBox(height: 16),
+
+                  // Edit Profile Section
+                  Card(
+                    margin: const EdgeInsets.only(top: 16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Account Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 12),
+                          if (!_isEditing) ...[
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Full Name'),
+                              subtitle: Text(_fullName ?? '-'),
+                            ),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Email'),
+                              subtitle: Text(_email ?? '-'),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: () => setState(() => _isEditing = true),
+                              icon: const Icon(Icons.edit),
+                              label: const Text('Edit Profile'),
+                            ),
+                          ] else ...[
+                            TextFormField(
+                              controller: _fullNameController,
+                              decoration: const InputDecoration(labelText: 'Full Name'),
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _emailController,
+                              decoration: const InputDecoration(labelText: 'Email'),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: _isLoading
+                                        ? null
+                                        : () async {
+                                            await _updateProfile();
+                                            setState(() => _isEditing = false);
+                                          },
+                                    icon: const Icon(Icons.save),
+                                    label: const Text('Save Changes'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => setState(() => _isEditing = false),
+                                    icon: const Icon(Icons.cancel),
+                                    label: const Text('Cancel'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (_errorMessage != null)
+                            Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+                          if (_successMessage != null)
+                            Text(_successMessage!, style: const TextStyle(color: Colors.green)),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+                  _buildPasswordSection(themeColor),
+                ],
+              ),
+            ),
     );
   }
 }
