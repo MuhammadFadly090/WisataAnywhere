@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'package:wisataAnywhere/screens/home_screens.dart';
-import 'package:wisataAnywhere/screens/sign_in_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:wisataAnywhere/main.dart'; // pastikan AuthWrapper ada di main.dart
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -11,73 +9,45 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> 
+class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  // Constants
-  static const _splashDelay = Duration(seconds: 3);
-  static const _animationDuration = Duration(seconds: 2);
-  
   late AnimationController _controller;
   late Animation<double> _animation;
-  bool _isCheckingAuth = false;
+  static const _splashDelay = Duration(seconds: 3);
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _initializeAnimation();
-    _checkAuthStatus();
+    _startSplashSequence();
   }
 
   void _initializeAnimation() {
     _controller = AnimationController(
       vsync: this,
-      duration: _animationDuration,
+      duration: const Duration(milliseconds: 1500),
     );
 
-    _animation = Tween<double>(begin: 0.0, end: 10.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeInOut,
-      ),
+    _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
 
     _controller.forward();
   }
 
-  Future<void> _checkAuthStatus() async {
-    await Future.delayed(_splashDelay);
-    
-    if (mounted) {
-      setState(() => _isCheckingAuth = true);
-    }
-
+  Future<void> _startSplashSequence() async {
     try {
-      // Give some time for animation to complete
-      await Future.delayed(const Duration(milliseconds: 500));
-      
-      final user = FirebaseAuth.instance.currentUser;
-      
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => user != null 
-                ? const HomeScreen() 
-                : const SignInScreen(),
-          ),
-        );
-      }
+      await Future.delayed(_splashDelay);
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const AuthWrapper()),
+      );
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Gagal memeriksa autentikasi. Coba lagi nanti.';
-          _isCheckingAuth = false;
-        });
-        
-        // Retry after 3 seconds if error occurs
-        Timer(const Duration(seconds: 3), _checkAuthStatus);
-      }
+      setState(() {
+        _errorMessage = 'Terjadi kesalahan saat membuka aplikasi.';
+      });
     }
   }
 
@@ -90,27 +60,26 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.green[50],
+      backgroundColor: Colors.blue.shade50, // background biru muda
       body: Stack(
         children: [
           Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                FadeTransition(
-                  opacity: _animation,
-                  child: Image.asset(
-                    'assets/fasum_icon.png',
-                    width: 150,
-                    height: 150,
+            child: FadeTransition(
+              opacity: _animation,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/1.png', // pastikan gambar ada di folder assets dan sudah didefinisikan di pubspec.yaml
+                    width: 180,
+                    height: 180,
                   ),
-                ),
-                const SizedBox(height: 20),
-                if (_isCheckingAuth)
+                  const SizedBox(height: 20),
                   const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
           if (_errorMessage != null)

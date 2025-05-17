@@ -1,21 +1,22 @@
-import 'package:wisataAnywhere/screens/sign_in_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:wisataAnywhere/screens/splash_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:wisataAnywhere/firebase_options.dart';
-import 'package:wisataAnywhere/screens/home_screens.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-import 'package:wisataAnywhere/screens/theme_provider.dart'; 
+
+import 'firebase_options.dart';
+import 'screens/splash_screen.dart';
+import 'screens/sign_in_screen.dart';
+import 'screens/home_screens.dart';
+import 'screens/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-   try {
-    final apps = Firebase.apps;
-    if (apps.isEmpty) {
-      await Firebase.initializeApp();
-    }
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print('Firebase initialized successfully');
   } catch (e) {
     print('Firebase initialization error: $e');
   }
@@ -54,7 +55,7 @@ class MyApp extends StatelessWidget {
         ),
       ),
       themeMode: themeProvider.themeMode,
-      home: const AuthWrapper(),
+      home: const SplashScreen(),
     );
   }
 }
