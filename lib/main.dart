@@ -11,15 +11,15 @@ import 'package:wisataAnywhere/screens/theme_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+   try {
+    final apps = Firebase.apps;
+    if (apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
   } catch (e) {
-    debugPrint('Firebase initialization error: $e');
+    print('Firebase initialization error: $e');
   }
 
-  // Initialize theme provider and load saved preference
   final themeProvider = ThemeProvider();
   await themeProvider.loadTheme();
 

@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:wisataAnywhere/screens/check_location.dart';
 
 class DetailPostScreen extends StatefulWidget {
   final String? imageBase64;
@@ -16,8 +17,6 @@ class DetailPostScreen extends StatefulWidget {
   final DateTime createdAt;
   final String fullName;
   final String postId;
-  final double? latitude;
-  final double? longitude;
 
   const DetailPostScreen({
     super.key,
@@ -27,15 +26,11 @@ class DetailPostScreen extends StatefulWidget {
     required this.createdAt,
     required this.fullName,
     required this.postId,
-    this.latitude,
-    this.longitude,
   });
 
   factory DetailPostScreen.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
-    double? latitude;
-    double? longitude;
     DateTime parsedCreatedAt;
 
     if (data['createdAt'] is Timestamp) {
@@ -46,19 +41,6 @@ class DetailPostScreen extends StatefulWidget {
       parsedCreatedAt = DateTime.now();
     }
 
-    try {
-      if (data['latitude'] != null) {
-        latitude = (data['latitude'] as num).toDouble();
-      }
-      if (data['longitude'] != null) {
-        longitude = (data['longitude'] as num).toDouble();
-      }
-    } catch (e) {
-      latitude = null;
-      longitude = null;
-      debugPrint('Invalid location data: $e');
-    }
-
     return DetailPostScreen(
       postId: doc.id,
       imageBase64: data['image'],
@@ -66,8 +48,6 @@ class DetailPostScreen extends StatefulWidget {
       description: data['description'],
       createdAt: parsedCreatedAt,
       fullName: data['fullName'] ?? 'Anonymous',
-      latitude: latitude,
-      longitude: longitude,
     );
   }
 
@@ -170,8 +150,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
           'description': widget.description,
           'image': widget.imageBase64,
           'originalPostCreatedAt': widget.createdAt.toIso8601String(),
-          'latitude': widget.latitude,
-          'longitude': widget.longitude,
+          // latitude & longitude dihapus
         });
       } else {
         final query = await FirebaseFirestore.instance
@@ -262,10 +241,40 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (widget.imageBase64 != null)
-                    Image.memory(
-                      base64Decode(widget.imageBase64!),
-                      fit: BoxFit.cover,
-                      width: double.infinity,
+                    Stack(
+                      children: [
+                        Image.memory(
+                          base64Decode(widget.imageBase64!),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                        ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => CheckLocationScreen(postId: widget.postId),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.location_on,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -318,35 +327,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                           ),
                         const SizedBox(height: 16),
 
-                        // ✅ Bagian untuk menampilkan latitude & longitude secara langsung
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Location:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            if (widget.latitude != null && widget.longitude != null)
-                              Text(
-                                'Latitude: ${widget.latitude!.toStringAsFixed(6)}, '
-                                'Longitude: ${widget.longitude!.toStringAsFixed(6)}',
-                                style: const TextStyle(fontSize: 16),
-                              )
-                            else
-                              const Text(
-                                'Location not available',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.red,
-                                ),
-                              ),
-                            const SizedBox(height: 16),
-                          ],
-                        ),
+                        // Bagian location dihapus
 
                         // Tombol Like, Comment, Share
                         Row(
