@@ -15,7 +15,9 @@ class _CheckLocationScreenState extends State<CheckLocationScreen> {
   @override
   void initState() {
     super.initState();
-    _openLocationInMaps();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openLocationInMaps();
+    });
   }
 
   Future<void> _openLocationInMaps() async {
@@ -26,15 +28,13 @@ class _CheckLocationScreenState extends State<CheckLocationScreen> {
           .get();
 
       if (!doc.exists) {
-        print('Post not found');
-        Navigator.of(context).pop();
+        _showError('Post not found');
         return;
       }
 
       final data = doc.data();
       if (data == null) {
-        print('Post data is empty');
-        Navigator.of(context).pop();
+        _showError('Post data is empty');
         return;
       }
 
@@ -52,8 +52,7 @@ class _CheckLocationScreenState extends State<CheckLocationScreen> {
       }
 
       if (latitude == null || longitude == null) {
-        print('Invalid location data');
-        Navigator.of(context).pop();
+        _showError('Invalid location data');
         return;
       }
 
@@ -62,22 +61,41 @@ class _CheckLocationScreenState extends State<CheckLocationScreen> {
       if (await canLaunchUrl(googleMapsUrl)) {
         await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
       } else {
-        print('Could not launch maps');
+        _showError('Could not launch maps');
       }
     } catch (e) {
-      print('Error opening location in maps: $e');
+      _showError('Error opening location: $e');
     } finally {
-      Navigator.of(context).pop(); // tutup layar ini setelah buka maps atau gagal
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
+  void _showError(String message) {
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text('Error'),
+          content: Text(message),
+          actions: [
+            TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).pop(); // keluar dari screen juga
+                },
+                child: Text('OK'))
+          ],
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // tampilkan kosong atau loading sementara proses berjalan
-    return const Scaffold(
-      body: Center(
-        child: CircularProgressIndicator(),
-      ),
+    return Scaffold(
+      body: Center(child: CircularProgressIndicator()),
     );
   }
 }
