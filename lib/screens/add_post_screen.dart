@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart'; // Tambahkan package ini
 
 class AddPostScreen extends StatefulWidget {
   const AddPostScreen({super.key});
@@ -25,6 +27,21 @@ class _AddPostScreenState extends State<AddPostScreen> {
   double? _longitude;
 
   @override
+  void initState() {
+    super.initState();
+    _requestPermissions();
+    _getLocation(); // Ambil lokasi di awal
+  }
+
+  Future<void> _requestPermissions() async {
+    // Request camera and storage permissions on init
+    await [
+      Permission.camera,
+      Permission.storage,
+    ].request();
+  }
+
+  @override
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
@@ -33,25 +50,69 @@ class _AddPostScreenState extends State<AddPostScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final pickedFile = await _picker.pickImage(source: source);
+      // Check camera permission first when using camera
+      if (source == ImageSource.camera) {
+        final status = await Permission.camera.status;
+        if (!status.isGranted) {
+          final result = await Permission.camera.request();
+          if (result != PermissionStatus.granted) {
+            _showErrorSnackbar('Camera permission denied');
+            return;
+          }
+        }
+      }
+
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        imageQuality: 50, // Reduce image quality further
+        maxWidth: 800, // Limit image width
+        maxHeight: 800, // Limit image height
+      );
+      
       if (pickedFile != null) {
         setState(() {
           _image = File(pickedFile.path);
         });
-
+        
+        // Compress and convert to base64 with error handling
         try {
-          final bytes = await _image!.readAsBytes();
-          _base64Image = base64Encode(bytes);
-        } catch (e, stack) {
-          debugPrint('Image encoding error: $e');
-          debugPrint(stack.toString());
-          _showErrorSnackbar('Failed to encode image: ${e.toString()}');
+          final Uint8List? compressedBytes = await _compressImage(_image!);
+          if (compressedBytes != null) {
+            final String encoded = base64Encode(compressedBytes);
+            // Limit base64 string size for Firestore (limit to ~800KB)
+            if (encoded.length > 800000) {
+              _base64Image = encoded.substring(0, 800000);
+              debugPrint('Image trimmed to fit Firestore limits');
+            } else {
+              _base64Image = encoded;
+            }
+          } else {
+            _showErrorSnackbar('Failed to compress image');
+          }
+        } catch (e) {
+          debugPrint('Base64 encoding error: $e');
+          _showErrorSnackbar('Failed to process image: $e');
         }
       }
-    } catch (e, stack) {
+    } catch (e) {
       debugPrint('Image pick error: $e');
-      debugPrint(stack.toString());
       _showErrorSnackbar('Failed to pick image: ${e.toString()}');
+    }
+  }
+
+  // Method to compress image
+  Future<Uint8List?> _compressImage(File file) async {
+    try {
+      final result = await FlutterImageCompress.compressWithFile(
+        file.absolute.path,
+        minWidth: 600,
+        minHeight: 600,
+        quality: 40, // Low quality for smaller size
+      );
+      return result;
+    } catch (e) {
+      debugPrint('Image compression error: $e');
+      return null;
     }
   }
 
@@ -59,15 +120,16 @@ class _AddPostScreenState extends State<AddPostScreen> {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _showErrorSnackbar('Location services are disabled');
+        debugPrint('Location services are disabled');
         return;
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission != LocationPermission.whileInUse && permission != LocationPermission.always) {
-          _showErrorSnackbar('Location permissions are denied');
+        if (permission != LocationPermission.whileInUse && 
+            permission != LocationPermission.always) {
+          debugPrint('Location permissions are denied');
           return;
         }
       }
@@ -80,15 +142,14 @@ class _AddPostScreenState extends State<AddPostScreen> {
         _latitude = position.latitude;
         _longitude = position.longitude;
       });
-    } catch (e, stack) {
+    } catch (e) {
       debugPrint('Location error: $e');
-      debugPrint(stack.toString());
-      _showErrorSnackbar('Failed to get location: ${e.toString()}');
+      // Don't show error snackbar for location, just log it
     }
   }
 
   Future<void> _submitPost() async {
-    if (_base64Image == null) {
+    if (_image == null || _base64Image == null) {
       _showErrorSnackbar('Please add an image');
       return;
     }
@@ -106,57 +167,68 @@ class _AddPostScreenState extends State<AddPostScreen> {
     setState(() => _isUploading = true);
 
     try {
-      await _getLocation();
-
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         _showErrorSnackbar('User not found. Please sign in.');
+        setState(() => _isUploading = false);
         return;
       }
 
-      String fullName = 'Anonymous';
+      // Get user document safely
+      DocumentSnapshot? userDoc;
       try {
-        final userDoc = await FirebaseFirestore.instance
+        userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .get();
-
-        fullName = userDoc.data()?['fullName'] ?? 'Anonymous';
-      } catch (e, stack) {
-        debugPrint('User doc fetch error: $e');
-        debugPrint(stack.toString());
+      } catch (e) {
+        debugPrint('Error fetching user doc: $e');
       }
+          
+      final fullName = userDoc?.data() is Map ? 
+          (userDoc!.data() as Map<String, dynamic>)['fullName'] ?? 'Anonymous' : 
+          'Anonymous';
 
-      await FirebaseFirestore.instance.collection('posts').add({
-        'image': _base64Image,
-        'title': _titleController.text,
-        'description': _descriptionController.text,
-        'createdAt': DateTime.now().toIso8601String(),
-        'latitude': _latitude,
-        'longitude': _longitude,
-        'fullName': fullName,
+      // Create a cleaned map to avoid invalid arguments
+      final Map<String, dynamic> postData = {
+        'title': _titleController.text.trim(),
+        'description': _descriptionController.text.trim(),
+        'createdAt': FieldValue.serverTimestamp(), // Use server timestamp
         'userId': user.uid,
         'status': 'Pending',
-      });
+        'fullName': fullName,
+      };
+
+      // Add base64Image if it's not too large
+      if (_base64Image != null && _base64Image!.length < 900000) {
+        postData['image'] = _base64Image;
+      } else {
+        // Store a placeholder if image is too large
+        postData['image'] = 'image_too_large';
+        postData['imageError'] = 'Image was too large to upload directly';
+      }
+
+      // Add location only if available
+      if (_latitude != null && _longitude != null) {
+        postData['latitude'] = _latitude;
+        postData['longitude'] = _longitude;
+      }
+
+      // Create the document
+      await FirebaseFirestore.instance.collection('posts').add(postData);
 
       if (mounted) {
         Navigator.pop(context);
         _showSuccessSnackbar('Post uploaded successfully!');
       }
-    } catch (e, stack) {
+    } catch (e) {
       debugPrint('Upload error: $e');
-      debugPrint(stack.toString());
       _showErrorSnackbar('Failed to upload: ${e.toString()}');
     } finally {
       if (mounted) {
         setState(() => _isUploading = false);
       }
     }
-  }
-
-  Future<void> _requestPermissions() async {
-    await Permission.camera.request();
-    await Permission.photos.request();
   }
 
   void _showImageSourceDialog() {
@@ -221,6 +293,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Image picker section
             GestureDetector(
               onTap: _showImageSourceDialog,
               child: Container(
@@ -254,6 +327,8 @@ class _AddPostScreenState extends State<AddPostScreen> {
               ),
             ),
             const SizedBox(height: 20),
+            
+            // Title field
             TextField(
               controller: _titleController,
               decoration: const InputDecoration(
@@ -264,6 +339,8 @@ class _AddPostScreenState extends State<AddPostScreen> {
               maxLines: 1,
             ),
             const SizedBox(height: 16),
+            
+            // Description field
             TextField(
               controller: _descriptionController,
               decoration: const InputDecoration(
@@ -275,10 +352,12 @@ class _AddPostScreenState extends State<AddPostScreen> {
               minLines: 3,
             ),
             const SizedBox(height: 16),
+            
+            // Location status
             ListTile(
               leading: const Icon(Icons.location_on),
               title: const Text('Location'),
-              subtitle: _latitude != null
+              subtitle: _latitude != null 
                   ? Text('Lat: $_latitude, Long: $_longitude')
                   : const Text('Getting location...'),
               trailing: IconButton(
@@ -287,6 +366,8 @@ class _AddPostScreenState extends State<AddPostScreen> {
               ),
             ),
             const SizedBox(height: 24),
+            
+            // Submit button
             ElevatedButton(
               onPressed: _isUploading ? null : _submitPost,
               style: ElevatedButton.styleFrom(
