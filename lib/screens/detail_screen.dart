@@ -63,6 +63,11 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   final TextEditingController _commentController = TextEditingController();
   List<Map<String, dynamic>> comments = [];
 
+  // Untuk menyimpan status reply untuk setiap komentar (key: commentId)
+  final Map<String, bool> _showReplyBox = {};
+  // Controller masing-masing reply
+  final Map<String, TextEditingController> _replyControllers = {};
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +78,9 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   @override
   void dispose() {
     _commentController.dispose();
+    for (var controller in _replyControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -207,6 +215,46 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     await _fetchComments();
   }
 
+  // Tambahkan reply pada subcollection 'replies' di setiap komentar
+  Future<void> _addReply(String commentId) async {
+    final replyText = _replyControllers[commentId]?.text.trim();
+    if (replyText == null || replyText.isEmpty) return;
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to reply')),
+      );
+      return;
+    }
+
+    String userName = 'Anonymous';
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUser.uid)
+        .get();
+    if (userDoc.exists) {
+      final userData = userDoc.data();
+      if (userData != null && userData['fullName'] != null) {
+        userName = userData['fullName'];
+      }
+    }
+
+    await FirebaseFirestore.instance
+        .collection('comments')
+        .doc(commentId)
+        .collection('replies')
+        .add({
+      'userId': currentUser.uid,
+      'userName': userName,
+      'text': replyText,
+      'createdAt': Timestamp.now(),
+    });
+
+    // Bersihkan field reply untuk komentar ini
+    _replyControllers[commentId]?.clear();
+  }
+
   Future<void> _sharePost() async {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
@@ -225,7 +273,9 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
         if (permission == LocationPermission.denied ||
             permission == LocationPermission.deniedForever) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permission is required to share location')),
+            const SnackBar(
+                content: Text(
+                    'Location permission is required to share location')),
           );
           return;
         }
@@ -350,7 +400,8 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                             ),
                           ),
                         const SizedBox(height: 8),
-                        if (widget.description != null && widget.description!.isNotEmpty)
+                        if (widget.description != null &&
+                            widget.description!.isNotEmpty)
                           Text(
                             widget.description!,
                             style: const TextStyle(fontSize: 16),
@@ -364,14 +415,17 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                               child: Column(
                                 children: [
                                   Icon(
-                                    isLiked ? Icons.favorite : Icons.favorite_border,
+                                    isLiked
+                                        ? Icons.favorite
+                                        : Icons.favorite_border,
                                     color: isLiked ? Colors.red : null,
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     'Like',
                                     style: TextStyle(
-                                      color: isLiked ? Colors.red : Colors.black,
+                                      color:
+                                          isLiked ? Colors.red : Colors.black,
                                     ),
                                   ),
                                 ],
@@ -431,7 +485,8 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                             const Center(
                               child: Padding(
                                 padding: EdgeInsets.all(16.0),
-                                child: Text('No comments yet. Be the first to comment!'),
+                                child: Text(
+                                    'No comments yet. Be the first to comment!'),
                               ),
                             ),
                         ],
@@ -445,37 +500,156 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   }
 
   Widget _buildCommentItem(Map<String, dynamic> comment) {
+    final commentId = comment['id'] as String;
+    // Inisialisasi controller dan flag untuk reply jika belum ada
+    _replyControllers.putIfAbsent(
+        commentId, () => TextEditingController());
+    _showReplyBox.putIfAbsent(commentId, () => false);
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CircleAvatar(
-            radius: 16,
-            child: Icon(Icons.person, size: 16),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const CircleAvatar(
+                radius: 16,
+                child: Icon(Icons.person, size: 16),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      comment['userName'] ?? 'Anonymous',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    Row(
+                      children: [
+                        Text(
+                          comment['userName'] ?? 'Anonymous',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          formatTime(comment['createdAt']),
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 12),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      formatTime(comment['createdAt']),
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    const SizedBox(height: 4),
+                    Text(comment['text'] ?? ''),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _showReplyBox[commentId] =
+                                  !_showReplyBox[commentId]!;
+                            });
+                          },
+                          child: const Text('Reply'),
+                        ),
+                      ],
                     ),
+                    // Jika reply box aktif, tampilkan text field untuk reply dan juga daftar reply yang sudah ada
+                    if (_showReplyBox[commentId] == true) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _replyControllers[commentId],
+                                decoration: const InputDecoration(
+                                  hintText: 'Write a reply...',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                maxLines: 1,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.send, size: 20),
+                              onPressed: () async {
+                                await _addReply(commentId);
+                                // Agar tampilan reply ter-refresh, kita gunakan setState
+                                setState(() {});
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Mengambil reply secara realtime menggunakan StreamBuilder
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('comments')
+                            .doc(commentId)
+                            .collection('replies')
+                            .orderBy('createdAt', descending: false)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const SizedBox();
+                          }
+                          final replies = snapshot.data!.docs;
+                          return ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: replies.length,
+                            itemBuilder: (context, index) {
+                              final replyData = replies[index].data()
+                                  as Map<String, dynamic>;
+                              final replyTime = (replyData['createdAt']
+                                      as Timestamp)
+                                  .toDate();
+                              return Container(
+                                margin: const EdgeInsets.only(
+                                    top: 4.0, left: 32.0),
+                                padding: const EdgeInsets.all(8.0),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          replyData['userName'] ??
+                                              'Anonymous',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          formatTime(replyTime),
+                                          style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      replyData['text'] ?? '',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(comment['text'] ?? ''),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
