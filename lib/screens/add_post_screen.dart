@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class AddPostScreen extends StatefulWidget {
   const AddPostScreen({super.key});
@@ -37,9 +38,19 @@ class _AddPostScreenState extends State<AddPostScreen> {
         setState(() {
           _image = File(pickedFile.path);
         });
-        _base64Image = base64Encode(await _image!.readAsBytes());
+
+        try {
+          final bytes = await _image!.readAsBytes();
+          _base64Image = base64Encode(bytes);
+        } catch (e, stack) {
+          debugPrint('Image encoding error: $e');
+          debugPrint(stack.toString());
+          _showErrorSnackbar('Failed to encode image: ${e.toString()}');
+        }
       }
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('Image pick error: $e');
+      debugPrint(stack.toString());
       _showErrorSnackbar('Failed to pick image: ${e.toString()}');
     }
   }
@@ -55,8 +66,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission != LocationPermission.whileInUse && 
-            permission != LocationPermission.always) {
+        if (permission != LocationPermission.whileInUse && permission != LocationPermission.always) {
           _showErrorSnackbar('Location permissions are denied');
           return;
         }
@@ -70,8 +80,9 @@ class _AddPostScreenState extends State<AddPostScreen> {
         _latitude = position.latitude;
         _longitude = position.longitude;
       });
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('Location error: $e');
+      debugPrint(stack.toString());
       _showErrorSnackbar('Failed to get location: ${e.toString()}');
     }
   }
@@ -96,19 +107,25 @@ class _AddPostScreenState extends State<AddPostScreen> {
 
     try {
       await _getLocation();
-      
+
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         _showErrorSnackbar('User not found. Please sign in.');
         return;
       }
 
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-          
-      final fullName = userDoc.data()?['fullName'] ?? 'Anonymous';
+      String fullName = 'Anonymous';
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+
+        fullName = userDoc.data()?['fullName'] ?? 'Anonymous';
+      } catch (e, stack) {
+        debugPrint('User doc fetch error: $e');
+        debugPrint(stack.toString());
+      }
 
       await FirebaseFirestore.instance.collection('posts').add({
         'image': _base64Image,
@@ -126,14 +143,20 @@ class _AddPostScreenState extends State<AddPostScreen> {
         Navigator.pop(context);
         _showSuccessSnackbar('Post uploaded successfully!');
       }
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('Upload error: $e');
+      debugPrint(stack.toString());
       _showErrorSnackbar('Failed to upload: ${e.toString()}');
     } finally {
       if (mounted) {
         setState(() => _isUploading = false);
       }
     }
+  }
+
+  Future<void> _requestPermissions() async {
+    await Permission.camera.request();
+    await Permission.photos.request();
   }
 
   void _showImageSourceDialog() {
@@ -198,7 +221,6 @@ class _AddPostScreenState extends State<AddPostScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Image picker section
             GestureDetector(
               onTap: _showImageSourceDialog,
               child: Container(
@@ -232,8 +254,6 @@ class _AddPostScreenState extends State<AddPostScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            
-            // Title field
             TextField(
               controller: _titleController,
               decoration: const InputDecoration(
@@ -244,8 +264,6 @@ class _AddPostScreenState extends State<AddPostScreen> {
               maxLines: 1,
             ),
             const SizedBox(height: 16),
-            
-            // Description field
             TextField(
               controller: _descriptionController,
               decoration: const InputDecoration(
@@ -257,12 +275,10 @@ class _AddPostScreenState extends State<AddPostScreen> {
               minLines: 3,
             ),
             const SizedBox(height: 16),
-            
-            // Location status
             ListTile(
               leading: const Icon(Icons.location_on),
               title: const Text('Location'),
-              subtitle: _latitude != null 
+              subtitle: _latitude != null
                   ? Text('Lat: $_latitude, Long: $_longitude')
                   : const Text('Getting location...'),
               trailing: IconButton(
@@ -271,8 +287,6 @@ class _AddPostScreenState extends State<AddPostScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            
-            // Submit button
             ElevatedButton(
               onPressed: _isUploading ? null : _submitPost,
               style: ElevatedButton.styleFrom(
