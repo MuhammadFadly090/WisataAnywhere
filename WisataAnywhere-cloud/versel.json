@@ -1,0 +1,10 @@
+{
+    "Version" : 2,
+    "Name" : "wisataanywhere-cloud",
+    "build" : [
+        { "src" : "app.js", "use": "@vercel/node"}
+    ],
+    "routes" : [
+        { "src" : "/(.*)", "dest": "/app.js" }
+    ]
+}
