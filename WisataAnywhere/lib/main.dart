@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
@@ -16,9 +18,9 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    print('Firebase initialized successfully');
+    print('✅ Firebase initialized successfully');
   } catch (e) {
-    print('Firebase initialization error: $e');
+    print('❌ Firebase initialization error: $e');
   }
 
   final themeProvider = ThemeProvider();
@@ -55,8 +57,48 @@ class MyApp extends StatelessWidget {
         ),
       ),
       themeMode: themeProvider.themeMode,
-      home: const SplashScreen(),
+      home: const FCMWrapper(),
     );
+  }
+}
+
+class FCMWrapper extends StatefulWidget {
+  const FCMWrapper({super.key});
+
+  @override
+  State<FCMWrapper> createState() => _FCMWrapperState();
+}
+
+class _FCMWrapperState extends State<FCMWrapper> {
+  @override
+  void initState() {
+    super.initState();
+
+    // Dengarkan status login user
+    FirebaseAuth.instance.authStateChanges().listen((user) async {
+      if (user != null) {
+        // Ambil token FCM
+        String? token = await FirebaseMessaging.instance.getToken();
+        print('🔐 FCM Token: $token');
+
+        if (token != null) {
+          // Simpan token ke Firestore di dokumen user
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+                'fcm_token': token,
+                'updated_at': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+          print('✅ Token disimpan di Firestore');
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const SplashScreen();
   }
 }
 
