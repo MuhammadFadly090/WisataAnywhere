@@ -13,6 +13,7 @@ import 'screens/splash_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'screens/home_screens.dart';
 import 'screens/theme_provider.dart';
+import 'screens/sign_up_screen.dart';
 
 // Inisialisasi notifikasi lokal
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =

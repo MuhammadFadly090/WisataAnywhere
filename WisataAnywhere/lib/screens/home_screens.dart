@@ -12,6 +12,7 @@ import 'package:wisataanywhere/screens/favorite_screen.dart';
 import 'package:wisataanywhere/screens/search_screen.dart';
 import 'package:wisataanywhere/screens/profile_screen.dart';
 
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
