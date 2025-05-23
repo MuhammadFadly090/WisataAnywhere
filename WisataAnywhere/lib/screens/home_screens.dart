@@ -316,15 +316,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Row(
                             children: [
-                              CircleAvatar(
-                                radius: 16,
-                                backgroundColor: themeColor.withOpacity(0.2),
-                                child: Icon(
-                                  Icons.person,
-                                  size: 16,
-                                  color: themeColor,
-                                ),
-                              ),
                               const SizedBox(width: 8),
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,

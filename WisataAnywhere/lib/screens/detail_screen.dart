@@ -63,9 +63,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   final TextEditingController _commentController = TextEditingController();
   List<Map<String, dynamic>> comments = [];
 
-  // Untuk menyimpan status reply untuk setiap komentar (key: commentId)
   final Map<String, bool> _showReplyBox = {};
-  // Controller masing-masing reply
   final Map<String, TextEditingController> _replyControllers = {};
 
   @override
@@ -215,7 +213,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     await _fetchComments();
   }
 
-  // Tambahkan reply pada subcollection 'replies' di setiap komentar
   Future<void> _addReply(String commentId) async {
     final replyText = _replyControllers[commentId]?.text.trim();
     if (replyText == null || replyText.isEmpty) return;
@@ -251,7 +248,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
       'createdAt': Timestamp.now(),
     });
 
-    // Bersihkan field reply untuk komentar ini
     _replyControllers[commentId]?.clear();
   }
 
@@ -265,7 +261,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
         return;
       }
 
-      // Minta izin lokasi dan dapatkan lokasi saat ini
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
@@ -364,11 +359,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                       children: [
                         Row(
                           children: [
-                            const CircleAvatar(
-                              radius: 20,
-                              child: Icon(Icons.person),
-                            ),
-                            const SizedBox(width: 10),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -501,7 +491,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
 
   Widget _buildCommentItem(Map<String, dynamic> comment) {
     final commentId = comment['id'] as String;
-    // Inisialisasi controller dan flag untuk reply jika belum ada
     _replyControllers.putIfAbsent(
         commentId, () => TextEditingController());
     _showReplyBox.putIfAbsent(commentId, () => false);
@@ -514,11 +503,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const CircleAvatar(
-                radius: 16,
-                child: Icon(Icons.person, size: 16),
-              ),
-              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -552,7 +536,6 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                         ),
                       ],
                     ),
-                    // Jika reply box aktif, tampilkan text field untuk reply dan juga daftar reply yang sudah ada
                     if (_showReplyBox[commentId] == true) ...[
                       Padding(
                         padding: const EdgeInsets.only(top: 4.0),
@@ -573,14 +556,12 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                               icon: const Icon(Icons.send, size: 20),
                               onPressed: () async {
                                 await _addReply(commentId);
-                                // Agar tampilan reply ter-refresh, kita gunakan setState
                                 setState(() {});
                               },
                             ),
                           ],
                         ),
                       ),
-                      // Mengambil reply secara realtime menggunakan StreamBuilder
                       StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance
                             .collection('comments')
