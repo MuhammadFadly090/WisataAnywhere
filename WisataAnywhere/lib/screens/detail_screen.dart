@@ -58,6 +58,8 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   bool isLiked = false;
   bool isLoading = true;
   bool _showCommentBox = false;
+  int likeCount = 0;
+  int shareCount = 0;
 
   final TextEditingController _commentController = TextEditingController();
   List<Map<String, dynamic>> comments = [];
@@ -70,6 +72,8 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     super.initState();
     _checkIfPostIsLiked();
     _fetchComments();
+    _fetchLikeCount();
+    _fetchShareCount();
   }
 
   @override
@@ -92,21 +96,76 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     return DateFormat('dd/MM/yyyy').format(dateTime);
   }
 
-  Future<void> _checkIfPostIsLiked() async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser != null) {
-      final doc = await FirebaseFirestore.instance
+  Future<void> _fetchLikeCount() async {
+    try {
+      final query = await FirebaseFirestore.instance
           .collection('favorites')
-          .where('userId', isEqualTo: currentUser.uid)
           .where('postId', isEqualTo: widget.postId)
           .get();
 
-      setState(() {
-        isLiked = doc.docs.isNotEmpty;
-        isLoading = false;
-      });
-    } else {
-      setState(() => isLoading = false);
+      if (mounted) {
+        setState(() {
+          likeCount = query.docs.length;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error fetching like count: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _fetchShareCount() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(widget.postId)
+          .get();
+
+      if (mounted) {
+        setState(() {
+          shareCount = (doc.data()?['shareCount'] as int?) ?? 0;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error fetching share count: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _checkIfPostIsLiked() async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection('favorites')
+            .where('userId', isEqualTo: currentUser.uid)
+            .where('postId', isEqualTo: widget.postId)
+            .get();
+
+        if (mounted) {
+          setState(() {
+            isLiked = doc.docs.isNotEmpty;
+            isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() => isLoading = false);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error checking like status: $e')),
+        );
+      }
     }
   }
 
@@ -118,28 +177,69 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
           .orderBy('createdAt', descending: true)
           .get();
 
-      final fetchedComments = commentsSnapshot.docs.map((doc) {
+      final fetchedComments = <Map<String, dynamic>>[];
+
+      for (var doc in commentsSnapshot.docs) {
         final data = doc.data();
-        return {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(data['userId'])
+            .get();
+        final userData = userDoc.data();
+
+        // Get reply count for this comment
+        final repliesSnapshot = await FirebaseFirestore.instance
+            .collection('comments')
+            .doc(doc.id)
+            .collection('replies')
+            .get();
+
+        // Get first 3 reply users' profile pictures
+        List<String> replyProfilePics = [];
+        if (repliesSnapshot.docs.isNotEmpty) {
+          final limitedReplies = repliesSnapshot.docs.take(3).toList();
+          for (var reply in limitedReplies) {
+            final replyUserDoc = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(reply['userId'])
+                .get();
+            if (replyUserDoc.exists && replyUserDoc.data()?['photoBase64'] != null) {
+              replyProfilePics.add(replyUserDoc.data()!['photoBase64']!);
+            }
+          }
+        }
+
+        fetchedComments.add({
           'id': doc.id,
           'text': data['text'],
-          'userName': data['userName'],
+          'userName': data['userName'] ?? 'Anonymous',
           'createdAt': (data['createdAt'] as Timestamp).toDate(),
-        };
-      }).toList();
+          'photoBase64': userData?['photoBase64'],
+          'replyCount': repliesSnapshot.docs.length,
+          'replyProfilePics': replyProfilePics,
+        });
+      }
 
-      setState(() => comments = fetchedComments);
+      if (mounted) {
+        setState(() => comments = fetchedComments);
+      }
     } catch (e) {
-      print('Error fetching comments: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error fetching comments: $e')),
+        );
+      }
     }
   }
 
   Future<void> _toggleLike() async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in to like posts')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please sign in to like posts')),
+        );
+      }
       return;
     }
 
@@ -157,6 +257,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
           'image': widget.imageBase64,
           'originalPostCreatedAt': widget.createdAt.toIso8601String(),
         });
+        setState(() => likeCount++);
       } else {
         final query = await FirebaseFirestore.instance
             .collection('favorites')
@@ -167,12 +268,15 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
         for (var doc in query.docs) {
           await doc.reference.delete();
         }
+        setState(() => likeCount--);
       }
     } catch (e) {
-      setState(() => isLiked = !isLiked);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
+      if (mounted) {
+        setState(() => isLiked = !isLiked);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -181,35 +285,45 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
 
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in to comment')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please sign in to comment')),
+        );
+      }
       return;
     }
 
-    String userName = 'Anonymous';
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(currentUser.uid)
-        .get();
+    try {
+      String userName = 'Anonymous';
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
 
-    if (userDoc.exists) {
-      final userData = userDoc.data();
-      if (userData != null && userData['fullName'] != null) {
-        userName = userData['fullName'];
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        if (userData != null && userData['fullName'] != null) {
+          userName = userData['fullName'];
+        }
+      }
+
+      await FirebaseFirestore.instance.collection('comments').add({
+        'postId': widget.postId,
+        'userId': currentUser.uid,
+        'userName': userName,
+        'text': _commentController.text.trim(),
+        'createdAt': Timestamp.now(),
+      });
+
+      _commentController.clear();
+      await _fetchComments();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error adding comment: $e')),
+        );
       }
     }
-
-    await FirebaseFirestore.instance.collection('comments').add({
-      'postId': widget.postId,
-      'userId': currentUser.uid,
-      'userName': userName,
-      'text': _commentController.text.trim(),
-      'createdAt': Timestamp.now(),
-    });
-
-    _commentController.clear();
-    await _fetchComments();
   }
 
   Future<void> _addReply(String commentId) async {
@@ -218,45 +332,58 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
 
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in to reply')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please sign in to reply')),
+        );
+      }
       return;
     }
 
-    String userName = 'Anonymous';
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(currentUser.uid)
-        .get();
-    if (userDoc.exists) {
-      final userData = userDoc.data();
-      if (userData != null && userData['fullName'] != null) {
-        userName = userData['fullName'];
+    try {
+      String userName = 'Anonymous';
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        if (userData != null && userData['fullName'] != null) {
+          userName = userData['fullName'];
+        }
+      }
+
+      await FirebaseFirestore.instance
+          .collection('comments')
+          .doc(commentId)
+          .collection('replies')
+          .add({
+        'userId': currentUser.uid,
+        'userName': userName,
+        'text': replyText,
+        'createdAt': Timestamp.now(),
+      });
+
+      _replyControllers[commentId]?.clear();
+      await _fetchComments();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error adding reply: $e')),
+        );
       }
     }
-
-    await FirebaseFirestore.instance
-        .collection('comments')
-        .doc(commentId)
-        .collection('replies')
-        .add({
-      'userId': currentUser.uid,
-      'userName': userName,
-      'text': replyText,
-      'createdAt': Timestamp.now(),
-    });
-
-    _replyControllers[commentId]?.clear();
   }
 
   Future<void> _sharePost() async {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please sign in to share posts')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to share posts')),
+          );
+        }
         return;
       }
 
@@ -266,11 +393,13 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied ||
             permission == LocationPermission.deniedForever) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text(
-                    'Location permission is required to share location')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text(
+                      'Location permission is required to share location')),
+            );
+          }
           return;
         }
       }
@@ -282,6 +411,15 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
 
       String shareText =
           '${widget.title ?? 'Check this post'}\n\n${widget.description ?? ''}\n\nLocation: $googleMapsUrl';
+
+      // Update share count
+      await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(widget.postId)
+          .update({
+        'shareCount': FieldValue.increment(1),
+      });
+      setState(() => shareCount++);
 
       if (widget.imageBase64 != null) {
         final tempDir = await getTemporaryDirectory();
@@ -295,10 +433,245 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
         await Share.share(shareText);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to share: $e')),
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to share: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildReplyAvatars(List<String> profilePics, int totalCount) {
+    List<Widget> avatars = [];
+    
+    // Add profile pictures
+  for (int i = 0; i < profilePics.length; i++) {
+     avatars.add(
+      Container(
+        margin: const EdgeInsets.only(right: 4),
+        child: CircleAvatar(
+          radius: 12,
+          backgroundImage: MemoryImage(base64Decode(profilePics[i])),
+        ),
+      ),
+    );
+  }
+
+    
+    // Add +count if there are more
+    if (totalCount > profilePics.length) {
+      avatars.add(
+        Container(
+          margin: const EdgeInsets.only(right: 4),
+          child: CircleAvatar(
+            radius: 12,
+            backgroundColor: Colors.grey[300],
+            child: Text(
+              '+${totalCount - profilePics.length}',
+              style: const TextStyle(fontSize: 10, color: Colors.black),
+            ),
+          ),
+        ),
       );
     }
+    
+    return Row(children: avatars);
+  }
+
+  Widget _buildCommentItem(Map<String, dynamic> comment) {
+    final commentId = comment['id'] as String;
+    _replyControllers.putIfAbsent(commentId, () => TextEditingController());
+    _showReplyBox.putIfAbsent(commentId, () => false);
+
+    final String? photoBase64 = comment['photoBase64'];
+    final ImageProvider profileImage = photoBase64 != null
+        ? MemoryImage(base64Decode(photoBase64))
+        : const AssetImage('assets/default_profile.png') as ImageProvider;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundImage: profileImage,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          comment['userName'] ?? 'Anonymous',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          formatTime(comment['createdAt']),
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(comment['text'] ?? ''),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _showReplyBox[commentId] = !_showReplyBox[commentId]!;
+                            });
+                          },
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(50, 30),
+                          ),
+                          child: const Text('Reply',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        if (comment['replyCount'] > 0) ...[
+                          const SizedBox(width: 8),
+                          _buildReplyAvatars(
+                            comment['replyProfilePics'] ?? [],
+                            comment['replyCount'],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${comment['replyCount']} ${comment['replyCount'] == 1 ? 'reply' : 'replies'}',
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_showReplyBox[commentId] == true) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0, left: 40.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _replyControllers[commentId],
+                      decoration: const InputDecoration(
+                        hintText: 'Write a reply...',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 12),
+                      ),
+                      maxLines: 1,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.send, size: 20),
+                    onPressed: () => _addReply(commentId),
+                  ),
+                ],
+              ),
+            ),
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('comments')
+                  .doc(commentId)
+                  .collection('replies')
+                  .orderBy('createdAt', descending: false)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const SizedBox();
+                }
+                final replies = snapshot.data!.docs;
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: replies.length,
+                  itemBuilder: (context, index) {
+                    final replyData =
+                        replies[index].data() as Map<String, dynamic>;
+                    final replyTime =
+                        (replyData['createdAt'] as Timestamp).toDate();
+                    
+                    // Get user profile picture for reply
+                    return FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(replyData['userId'])
+                          .get(),
+                      builder: (context, userSnapshot) {
+                        String? replyPhotoBase64;
+                        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                          replyPhotoBase64 = userSnapshot.data!['photoBase64'];
+                        }
+                        
+                        final replyProfileImage = replyPhotoBase64 != null
+                            ? MemoryImage(base64Decode(replyPhotoBase64))
+                            : const AssetImage('assets/default_profile.png') as ImageProvider;
+                            
+                        return Container(
+                          margin: const EdgeInsets.only(top: 4.0, left: 32.0),
+                          padding: const EdgeInsets.all(8.0),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CircleAvatar(
+                                radius: 14,
+                                backgroundImage: replyProfileImage,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          replyData['userName'] ?? 'Anonymous',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold, fontSize: 13),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          formatTime(replyTime),
+                                          style: const TextStyle(
+                                              fontSize: 11, color: Colors.grey),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      replyData['text'] ?? '',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -314,6 +687,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Post image first
                   if (widget.imageBase64 != null)
                     Stack(
                       children: [
@@ -321,6 +695,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                           base64Decode(widget.imageBase64!),
                           fit: BoxFit.cover,
                           width: double.infinity,
+                          height: 300,
                         ),
                         Positioned(
                           top: 8,
@@ -351,13 +726,40 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                         ),
                       ],
                     ),
+                  
+                  // User profile, title and description below the image
                   Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // User profile section
                         Row(
                           children: [
+                            FutureBuilder<DocumentSnapshot>(
+                              future: FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(FirebaseAuth.instance.currentUser?.uid)
+                                  .get(),
+                              builder: (context, snapshot) {
+                                if (snapshot.hasData && snapshot.data!.exists) {
+                                  final userData = snapshot.data!.data() as Map<String, dynamic>;
+                                  final photoBase64 = userData['photoBase64'];
+                                  
+                                  return CircleAvatar(
+                                    radius: 20,
+                                    backgroundImage: photoBase64 != null
+                                      ? MemoryImage(base64Decode(photoBase64))
+                                      : const AssetImage('assets/default_profile.png') as ImageProvider,
+                                  );
+                                }
+                                return const CircleAvatar(
+                                  radius: 20,
+                                  backgroundImage: AssetImage('assets/default_profile.png'),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 12),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -379,7 +781,10 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                             ),
                           ],
                         ),
+                        
                         const SizedBox(height: 16),
+                        
+                        // Title and description
                         if (widget.title != null && widget.title!.isNotEmpty)
                           Text(
                             widget.title!,
@@ -395,7 +800,16 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                             widget.description!,
                             style: const TextStyle(fontSize: 16),
                           ),
-                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+                  
+                  // Like, comment, share buttons
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Column(
+                      children: [
+                        const Divider(),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
@@ -408,10 +822,11 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                                         ? Icons.favorite
                                         : Icons.favorite_border,
                                     color: isLiked ? Colors.red : null,
+                                    size: 28,
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Like',
+                                    'Like ($likeCount)',
                                     style: TextStyle(
                                       color:
                                           isLiked ? Colors.red : Colors.black,
@@ -428,7 +843,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                               },
                               child: Column(
                                 children: [
-                                  const Icon(Icons.comment_outlined),
+                                  const Icon(Icons.comment_outlined, size: 28),
                                   const SizedBox(height: 4),
                                   Text('Comment (${comments.length})'),
                                 ],
@@ -436,19 +851,27 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                             ),
                             GestureDetector(
                               onTap: _sharePost,
-                              child: const Column(
+                              child: Column(
                                 children: [
-                                  Icon(Icons.share_outlined),
-                                  SizedBox(height: 4),
-                                  Text('Share'),
+                                  const Icon(Icons.share_outlined, size: 28),
+                                  const SizedBox(height: 4),
+                                  Text('Share ($shareCount)'),
                                 ],
                               ),
                             ),
                           ],
                         ),
-                        if (_showCommentBox) ...[
-                          const SizedBox(height: 16),
-                          const Divider(),
+                        const Divider(),
+                      ],
+                    ),
+                  ),
+                  
+                  // Comments section
+                  if (_showCommentBox) ...[
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
                           Row(
                             children: [
                               Expanded(
@@ -457,6 +880,8 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                                   decoration: const InputDecoration(
                                     hintText: 'Add a comment...',
                                     border: OutlineInputBorder(),
+                                    contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 12),
                                   ),
                                   maxLines: 1,
                                   maxLength: 200,
@@ -469,7 +894,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          ...comments.map(_buildCommentItem),
+                          ...comments.map((comment) => _buildCommentItem(comment)),
                           if (comments.isEmpty)
                             const Center(
                               child: Padding(
@@ -479,160 +904,12 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                               ),
                             ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
-    );
-  }
-
-  Widget _buildCommentItem(Map<String, dynamic> comment) {
-    final commentId = comment['id'] as String;
-    _replyControllers.putIfAbsent(
-        commentId, () => TextEditingController());
-    _showReplyBox.putIfAbsent(commentId, () => false);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          comment['userName'] ?? 'Anonymous',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          formatTime(comment['createdAt']),
-                          style: const TextStyle(
-                              color: Colors.grey, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(comment['text'] ?? ''),
-                    Row(
-                      children: [
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _showReplyBox[commentId] =
-                                  !_showReplyBox[commentId]!;
-                            });
-                          },
-                          child: const Text('Reply'),
-                        ),
-                      ],
-                    ),
-                    if (_showReplyBox[commentId] == true) ...[
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _replyControllers[commentId],
-                                decoration: const InputDecoration(
-                                  hintText: 'Write a reply...',
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                ),
-                                maxLines: 1,
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.send, size: 20),
-                              onPressed: () async {
-                                await _addReply(commentId);
-                                setState(() {});
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('comments')
-                            .doc(commentId)
-                            .collection('replies')
-                            .orderBy('createdAt', descending: false)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) {
-                            return const SizedBox();
-                          }
-                          final replies = snapshot.data!.docs;
-                          return ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: replies.length,
-                            itemBuilder: (context, index) {
-                              final replyData = replies[index].data()
-                                  as Map<String, dynamic>;
-                              final replyTime = (replyData['createdAt']
-                                      as Timestamp)
-                                  .toDate();
-                              return Container(
-                                margin: const EdgeInsets.only(
-                                    top: 4.0, left: 32.0),
-                                padding: const EdgeInsets.all(8.0),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[200],
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          replyData['userName'] ??
-                                              'Anonymous',
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 13),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          formatTime(replyTime),
-                                          style: const TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      replyData['text'] ?? '',
-                                      style: const TextStyle(fontSize: 13),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

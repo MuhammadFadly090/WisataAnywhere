@@ -6,12 +6,17 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'screens/home_screens.dart';
 import 'screens/theme_provider.dart';
+
+// Inisialisasi notifikasi lokal
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +26,34 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     print('✅ Firebase initialized successfully');
+
+    // Konfigurasi notifikasi lokal
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    const InitializationSettings initializationSettings =
+        InitializationSettings(android: initializationSettingsAndroid);
+
+    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+    // Dengarkan notifikasi saat app aktif
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (message.notification != null) {
+        flutterLocalNotificationsPlugin.show(
+          0,
+          message.notification!.title,
+          message.notification!.body,
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'default_channel',
+              'Default Channel',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+          ),
+        );
+      }
+    });
   } catch (e) {
     print('❌ Firebase initialization error: $e');
   }
@@ -36,7 +69,6 @@ void main() async {
   );
 }
 
-// ✅ Fungsi untuk kirim notifikasi ke topic "news"
 Future<void> sendNotificationToTopic(String title, String body) async {
   const String url = 'https://wisataanywherecloud.vercel.app/send-to-topic';
   const String topic = 'news';
@@ -104,19 +136,12 @@ class _FCMWrapperState extends State<FCMWrapper> {
   void initState() {
     super.initState();
 
-    // Dengarkan login user
     FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user != null) {
-        // 🔐 Ambil token
         String? token = await FirebaseMessaging.instance.getToken();
         print('🔐 FCM Token: $token');
 
-        // 📢 Subscribe ke topic 'news'
-        await FirebaseMessaging.instance.subscribeToTopic('news');
-        print('✅ Subscribed to topic "news"');
-
         if (token != null) {
-          // 💾 Simpan token ke Firestore
           await FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
