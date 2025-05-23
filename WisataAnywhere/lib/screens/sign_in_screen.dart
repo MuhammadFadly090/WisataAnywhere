@@ -130,7 +130,21 @@ class SignInScreenState extends State<SignInScreen> {
                               return null;
                             },
                           ),
-                          const SizedBox(height: 24.0),
+                          const SizedBox(height: 8.0),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: _showForgotPasswordDialog,
+                              child: const Text(
+                                'Lupa Password?',
+                                style: TextStyle(
+                                  color: Color(0xFFE53935),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16.0),
                           _isLoading
                               ? const Center(child: CircularProgressIndicator())
                               : ElevatedButton(
@@ -164,9 +178,11 @@ class SignInScreenState extends State<SignInScreen> {
                               TextButton(
                                 onPressed: () {
                                   Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => const SignUpScreen()),
-                                );
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const SignUpScreen()),
+                                  );
                                 },
                                 child: Text(
                                   'Daftar Sekarang',
@@ -244,6 +260,60 @@ class SignInScreenState extends State<SignInScreen> {
       default:
         return 'Terjadi kesalahan. Silakan coba lagi.';
     }
+  }
+
+  void _showForgotPasswordDialog() {
+    final TextEditingController emailController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Reset Password'),
+          content: TextField(
+            controller: emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Masukkan Email Anda',
+              prefixIcon: Icon(Icons.email),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final email = emailController.text.trim();
+
+                if (!_isValidEmail(email)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Harap masukkan email yang valid')),
+                  );
+                  return;
+                }
+
+                try {
+                  await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Email reset password telah dikirim')),
+                  );
+                } on FirebaseAuthException catch (e) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: ${e.message}')),
+                  );
+                }
+              },
+              child: const Text('Kirim'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
