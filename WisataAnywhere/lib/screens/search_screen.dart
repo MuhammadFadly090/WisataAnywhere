@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:wisataanywhere/screens/detail_screen.dart';// Import the DetailPostScreen
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({Key? key}) : super(key: key);
@@ -17,12 +18,8 @@ class _SearchScreenState extends State<SearchScreen> {
   List<DocumentSnapshot> _searchResults = [];
   bool _isSearching = false;
   String _searchQuery = '';
-
-  // Filter mode: 'all' atau 'nearby'
   String _filterMode = 'all';
-
   Position? _userPosition;
-
   static const double nearbyRadiusKm = 10;
 
   @override
@@ -35,14 +32,12 @@ class _SearchScreenState extends State<SearchScreen> {
     bool serviceEnabled;
     LocationPermission permission;
 
-    // Cek layanan lokasi
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       _showErrorSnackBar('Layanan lokasi tidak aktif');
       return;
     }
 
-    // Cek izin lokasi
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -57,7 +52,6 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
 
-    // Ambil posisi
     final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high);
     setState(() {
@@ -67,13 +61,12 @@ class _SearchScreenState extends State<SearchScreen> {
 
   double _calculateDistance(
       double lat1, double lon1, double lat2, double lon2) {
-    // Haversine formula
     const p = 0.017453292519943295; 
     final a = 0.5 -
         cos((lat2 - lat1) * p) / 2 +
         cos(lat1 * p) *
             cos(lat2 * p) *
-            (1 - cos((lon2 - lon1) * p));
+            (1 - cos((lon2 - lon1) * p)) /
             2;
     return 12742 * asin(sqrt(a)); 
   }
@@ -107,10 +100,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
         final filteredDocs = querySnapshot.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
-
           final title = (data['title'] as String? ?? '').toLowerCase();
           final topic = (data['topic'] as String? ?? '').toLowerCase();
-
           return title.contains(_searchQuery) || topic.contains(_searchQuery);
         }).toList();
 
@@ -240,20 +231,6 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  void _navigateToDetailScreen(
-    String postId,
-    String? imageBase64,
-    String? title,
-    String? description,
-    DateTime createdAt,
-    String fullName,
-    String userId,
-  ) {
-    // TODO: Implementasi navigasi ke detail screen sesuai project kamu
-    // Contoh:
-    // Navigator.push(context, MaterialPageRoute(builder: (context) => DetailScreen(...)));
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -333,17 +310,34 @@ class _SearchScreenState extends State<SearchScreen> {
                           final fullName = data['fullName'] as String? ?? 'Unknown';
                           final userId = data['userId'] as String? ?? '';
 
+                          // Handle createdAt parsing
                           DateTime createdAt;
-                          try {
-                            createdAt = DateTime.parse(createdAtStr);
-                          } catch (_) {
-                            createdAt = DateTime.now();
+                          if (data['createdAt'] is Timestamp) {
+                            createdAt = (data['createdAt'] as Timestamp).toDate();
+                          } else {
+                            try {
+                              createdAt = DateTime.parse(createdAtStr);
+                            } catch (_) {
+                              createdAt = DateTime.now();
+                            }
                           }
 
                           return InkWell(
                             onTap: () {
-                              _navigateToDetailScreen(postId, imageBase64, title,
-                                  description, createdAt, fullName, userId);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => DetailPostScreen(
+                                    postId: postId,
+                                    imageBase64: imageBase64,
+                                    title: title,
+                                    description: description,
+                                    createdAt: createdAt,
+                                    fullName: fullName,
+                                    userId: userId,
+                                  ),
+                                ),
+                              );
                             },
                             child: Card(
                               margin:
