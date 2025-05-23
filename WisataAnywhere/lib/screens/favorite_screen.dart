@@ -136,6 +136,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                                     createdAt: fav['originalPostCreatedAt'],
                                     fullName: fav['fullName'],
                                     postId: fav['postId'],
+                                    userId: fav['userId'],
                                   ),
                                 ),
                               );

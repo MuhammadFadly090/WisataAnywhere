@@ -56,11 +56,13 @@ class _HomeScreenState extends State<HomeScreen> {
     String? description,
     DateTime createdAt,
     String fullName,
+    String userId,
   ) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => DetailPostScreen(
           postId: postId,
+          userId: userId,
           imageBase64: imageBase64,
           title: title,
           description: description,
@@ -283,6 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final description = data['description'] as String?;
             final createdAtStr = data['createdAt'] as String;
             final fullName = data['fullName'] as String? ?? 'Anonymous';
+            final userId = data['userId'] as String? ?? 'Unknown'; // ← Tambahkan ini
             final createdAt = DateTime.parse(createdAtStr);
 
             return Card(
@@ -294,7 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
                 onTap: () => _navigateToDetailScreen(
-                  postId, imageBase64, title, description, createdAt, fullName),
+                  postId, imageBase64, title, description, createdAt, fullName, userId),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

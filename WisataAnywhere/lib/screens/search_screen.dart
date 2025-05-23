@@ -96,11 +96,13 @@ class _SearchScreenState extends State<SearchScreen> {
     String? description,
     DateTime createdAt,
     String fullName,
+    String userId
   ) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => DetailPostScreen(
           postId: postId,
+          userId: userId,
           imageBase64: imageBase64,
           title: title,
           description: description,
@@ -204,6 +206,7 @@ class _SearchScreenState extends State<SearchScreen> {
         final description = data['description'] as String? ?? '';
         final createdAtStr = data['createdAt'] as String;
         final fullName = data['fullName'] as String? ?? 'Anonymous';
+        final userId = data['userId'] as String? ?? 'Unknown';
         final createdAt = DateTime.parse(createdAtStr);
 
         return Card(
@@ -215,7 +218,7 @@ class _SearchScreenState extends State<SearchScreen> {
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: () => _navigateToDetailScreen(
-              postId, imageBase64, title, description, createdAt, fullName),
+              postId, imageBase64, title, description, createdAt, fullName, userId),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

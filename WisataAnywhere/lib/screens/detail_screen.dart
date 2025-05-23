@@ -17,6 +17,7 @@ class DetailPostScreen extends StatefulWidget {
   final DateTime createdAt;
   final String fullName;
   final String postId;
+  final String userId; // Add userId field
 
   const DetailPostScreen({
     Key? key,
@@ -26,6 +27,7 @@ class DetailPostScreen extends StatefulWidget {
     required this.createdAt,
     required this.fullName,
     required this.postId,
+    required this.userId, // Add userId parameter
   }) : super(key: key);
 
   factory DetailPostScreen.fromDocument(DocumentSnapshot doc) {
@@ -47,6 +49,7 @@ class DetailPostScreen extends StatefulWidget {
       description: data['description'],
       createdAt: parsedCreatedAt,
       fullName: data['fullName'] ?? 'Anonymous',
+      userId: data['userId'] ?? '', // Get userId from document
     );
   }
 
@@ -60,6 +63,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
   bool _showCommentBox = false;
   int likeCount = 0;
   int shareCount = 0;
+  Map<String, dynamic>? postUserData; // To store the post author's data
 
   final TextEditingController _commentController = TextEditingController();
   List<Map<String, dynamic>> comments = [];
@@ -74,6 +78,7 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     _fetchComments();
     _fetchLikeCount();
     _fetchShareCount();
+    _fetchPostUserData(); // Fetch post author's data
   }
 
   @override
@@ -83,6 +88,29 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _fetchPostUserData() async {
+    if (widget.userId.isEmpty) return;
+    
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .get();
+          
+      if (userDoc.exists) {
+        setState(() {
+          postUserData = userDoc.data();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error fetching user data: $e')),
+        );
+      }
+    }
   }
 
   String formatTime(DateTime dateTime) {
@@ -445,18 +473,17 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
     List<Widget> avatars = [];
     
     // Add profile pictures
-  for (int i = 0; i < profilePics.length; i++) {
-     avatars.add(
-      Container(
-        margin: const EdgeInsets.only(right: 4),
-        child: CircleAvatar(
-          radius: 12,
-          backgroundImage: MemoryImage(base64Decode(profilePics[i])),
+    for (int i = 0; i < profilePics.length; i++) {
+      avatars.add(
+        Container(
+          margin: const EdgeInsets.only(right: 4),
+          child: CircleAvatar(
+            radius: 12,
+            backgroundImage: MemoryImage(base64Decode(profilePics[i])),
+          ),
         ),
-      ),
-    );
-  }
-
+      );
+    }
     
     // Add +count if there are more
     if (totalCount > profilePics.length) {
@@ -733,31 +760,14 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // User profile section
+                        // User profile section - now showing the post author's profile
                         Row(
                           children: [
-                            FutureBuilder<DocumentSnapshot>(
-                              future: FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(FirebaseAuth.instance.currentUser?.uid)
-                                  .get(),
-                              builder: (context, snapshot) {
-                                if (snapshot.hasData && snapshot.data!.exists) {
-                                  final userData = snapshot.data!.data() as Map<String, dynamic>;
-                                  final photoBase64 = userData['photoBase64'];
-                                  
-                                  return CircleAvatar(
-                                    radius: 20,
-                                    backgroundImage: photoBase64 != null
-                                      ? MemoryImage(base64Decode(photoBase64))
-                                      : const AssetImage('assets/default_profile.png') as ImageProvider,
-                                  );
-                                }
-                                return const CircleAvatar(
-                                  radius: 20,
-                                  backgroundImage: AssetImage('assets/default_profile.png'),
-                                );
-                              },
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundImage: postUserData?['photoBase64'] != null
+                                ? MemoryImage(base64Decode(postUserData!['photoBase64']))
+                                : const AssetImage('assets/default_profile.png') as ImageProvider,
                             ),
                             const SizedBox(width: 12),
                             Column(
@@ -874,6 +884,31 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
                         children: [
                           Row(
                             children: [
+                              // Show current user's profile picture in comment box
+                              FutureBuilder<DocumentSnapshot>(
+                                future: FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(FirebaseAuth.instance.currentUser?.uid)
+                                    .get(),
+                                builder: (context, snapshot) {
+                                  if (snapshot.hasData && snapshot.data!.exists) {
+                                    final userData = snapshot.data!.data() as Map<String, dynamic>;
+                                    final photoBase64 = userData['photoBase64'];
+                                    
+                                    return CircleAvatar(
+                                      radius: 18,
+                                      backgroundImage: photoBase64 != null
+                                        ? MemoryImage(base64Decode(photoBase64))
+                                        : const AssetImage('assets/default_profile.png') as ImageProvider,
+                                    );
+                                  }
+                                  return const CircleAvatar(
+                                    radius: 18,
+                                    backgroundImage: AssetImage('assets/default_profile.png'),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: TextField(
                                   controller: _commentController,
