@@ -160,85 +160,162 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final themeColor = Theme.of(context).primaryColor;
     final currentUser = FirebaseAuth.instance.currentUser;
 
-    return Scaffold(
-      key: _scaffoldKey,
-      appBar: AppBar(
-        title: const Text('WisataAnywhere', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        elevation: 0,
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: isDarkMode
-                  ? [Colors.grey[900]!, Colors.grey[800]!]
-                  : [themeColor, themeColor.withOpacity(0.7)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+    return SafeArea(
+      child: Scaffold(
+        resizeToAvoidBottomInset: true,
+        key: _scaffoldKey,
+        appBar: AppBar(
+          title: const Text('WisataAnywhere', style: TextStyle(fontWeight: FontWeight.bold)),
+          centerTitle: true,
+          elevation: 0,
+          flexibleSpace: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isDarkMode
+                    ? [Colors.grey[900]!, Colors.grey[800]!]
+                    : [themeColor, themeColor.withOpacity(0.7)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
             ),
           ),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
-            onPressed: () => themeProvider.toggleTheme(!isDarkMode),
-          ),
-          if (currentUser != null)
-            FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const CircleAvatar(
-                    radius: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+          actions: [
+            IconButton(
+              icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
+              onPressed: () => themeProvider.toggleTheme(!isDarkMode),
+            ),
+            if (currentUser != null)
+              FutureBuilder<DocumentSnapshot>(
+                future: FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const CircleAvatar(
+                      radius: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    );
+                  }
+                  final photoBase64 = snapshot.data?['photoBase64'] as String?;
+                  return GestureDetector(
+                    onTap: () => _onItemTapped(3),
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundImage: photoBase64 != null
+                          ? MemoryImage(base64Decode(photoBase64))
+                          : const AssetImage('assets/default_profile.png') as ImageProvider,
+                    ),
                   );
-                }
-                final photoBase64 = snapshot.data?['photoBase64'] as String?;
-                return GestureDetector(
-                  onTap: () => _onItemTapped(3),
-                  child: CircleAvatar(
-                    radius: 16,
-                    backgroundImage: photoBase64 != null
-                        ? MemoryImage(base64Decode(photoBase64))
-                        : const AssetImage('assets/default_profile.png') as ImageProvider,
-                  ),
-                );
-              },
-            ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: LiquidPullToRefresh(
-        key: _refreshIndicatorKey,
-        onRefresh: _handleRefresh,
-        color: themeColor,
-        height: 150,
-        animSpeedFactor: 2,
-        showChildOpacityTransition: false,
-        child: PageView(
-          controller: _pageController,
-          physics: const NeverScrollableScrollPhysics(),
-          children: [
-            _buildHomeContent(isDarkMode, themeColor),
-            Container(), // Placeholder for Add Post
-            const FavoriteScreen(),
+                },
+              ),
+            const SizedBox(width: 8),
           ],
         ),
+        body: LiquidPullToRefresh(
+          key: _refreshIndicatorKey,
+          onRefresh: _handleRefresh,
+          color: themeColor,
+          height: 150,
+          animSpeedFactor: 2,
+          showChildOpacityTransition: false,
+          child: PageView(
+            controller: _pageController,
+            physics: const NeverScrollableScrollPhysics(),
+            children: [
+              _buildHomeContent(isDarkMode, themeColor),
+              Container(), // Placeholder for Add Post
+              const FavoriteScreen(),
+            ],
+          ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        floatingActionButton: FloatingActionButton(
+          backgroundColor: themeColor,
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (context) => const AddPostScreen()),
+            );
+          },
+          child: const Icon(Icons.add, color: Colors.white),
+        ),
+        bottomNavigationBar: BottomAppBar(
+          color: isDarkMode ? Colors.grey[900] : Colors.white,
+          shape: const CircularNotchedRectangle(),
+          notchMargin: 8.0,
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(
+                  icon: Icons.home,
+                  label: 'Home',
+                  index: 0,
+                  isSelected: _selectedIndex == 0,
+                  isDarkMode: isDarkMode,
+                  themeColor: themeColor,
+                ),
+                _buildNavItem(
+                  icon: Icons.favorite,
+                  label: 'Favorites',
+                  index: 2,
+                  isSelected: _selectedIndex == 2,
+                  isDarkMode: isDarkMode,
+                  themeColor: themeColor,
+                ),
+                const SizedBox(width: 40),
+                _buildNavItem(
+                  icon: Icons.search,
+                  label: 'Search',
+                  index: 1,
+                  isSelected: _selectedIndex == 1,
+                  isDarkMode: isDarkMode,
+                  themeColor: themeColor,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SearchScreen()),
+                  ),
+                ),
+                _buildNavItem(
+                  icon: Icons.person,
+                  label: 'Profile',
+                  index: 3,
+                  isSelected: _selectedIndex == 3,
+                  isDarkMode: isDarkMode,
+                  themeColor: themeColor,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
-      floatingActionButton: AnimatedFloatingActionButton(
-        themeColor: themeColor,
-        isDarkMode: isDarkMode,
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => const AddPostScreen()),
-          );
-        },
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: AnimatedBottomBar(
-        selectedIndex: _selectedIndex,
-        isDarkMode: isDarkMode,
-        themeColor: themeColor,
-        onItemSelected: _onItemTapped,
+    );
+  }
+
+  Widget _buildNavItem({
+    required IconData icon,
+    required String label,
+    required int index,
+    required bool isSelected,
+    required bool isDarkMode,
+    required Color themeColor,
+    VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap ?? () => _onItemTapped(index),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: isSelected ? themeColor : isDarkMode ? Colors.grey[400] : Colors.grey[600],
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isSelected ? themeColor : isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -478,7 +555,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           const SizedBox(height: 24),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: themeColor, 
+              backgroundColor: themeColor,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -531,172 +608,192 @@ class AnimatedPostCard extends StatelessWidget {
       child: ScaleTransition(
         scale: animation,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(16),
-            child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
               ),
-              shadowColor: isDarkMode ? Colors.black : Colors.grey.withOpacity(0.3),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (imageBase64 != null)
-                    ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(16)),
-                      child: Stack(
-                        children: [
-                          Image.memory(
-                            base64Decode(imageBase64!),
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: 200,
-                          ),
-                          Positioned(
-                            bottom: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(12),
+              child: SingleChildScrollView(
+                child: Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  shadowColor:
+                      isDarkMode ? Colors.black : Colors.grey.withOpacity(0.3),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (imageBase64 != null)
+                        ClipRRect(
+                          borderRadius:
+                              const BorderRadius.vertical(top: Radius.circular(16)),
+                          child: Stack(
+                            children: [
+                              Image.memory(
+                                base64Decode(imageBase64!),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: 200,
                               ),
-                              child: Text(
-                                _formatTime(createdAt),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Hero(
-                              tag: 'user_$fullName',
-                              child: CircleAvatar(
-                                radius: 20,
-                                backgroundImage: userPhoto,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    fullName,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                      color: isDarkMode 
-                                          ? Colors.white 
-                                          : Colors.black,
+                              Positioned(
+                                bottom: 8,
+                                right: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    _formatTime(createdAt),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
                                     ),
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                Icons.more_vert,
-                                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                              ),
-                              onPressed: () {},
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                        if (title != null && title!.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              title!,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: isDarkMode 
-                                    ? Colors.white 
-                                    : Colors.black,
-                              ),
-                            ),
-                          ),
-                        if (description != null && description!.isNotEmpty)
-                          Text(
-                            description!,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: isDarkMode 
-                                  ? Colors.grey[300] 
-                                  : Colors.grey[700],
-                            ),
-                          ),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                Icon(
-                                  Icons.favorite_border,
-                                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                                  size: 24,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '0',
-                                  style: TextStyle(
-                                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                Hero(
+                                  tag: 'user_$fullName',
+                                  child: CircleAvatar(
+                                    radius: 20,
+                                    backgroundImage: userPhoto,
                                   ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        fullName,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: isDarkMode
+                                              ? Colors.white
+                                              : Colors.black,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.more_vert,
+                                    color: isDarkMode
+                                        ? Colors.grey[400]
+                                        : Colors.grey[600],
+                                  ),
+                                  onPressed: () {},
                                 ),
                               ],
                             ),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.comment_outlined,
-                                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                                  size: 24,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '0',
+                            const SizedBox(height: 12),
+                            if (title != null && title!.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  title!,
                                   style: TextStyle(
-                                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDarkMode
+                                        ? Colors.white
+                                        : Colors.black,
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            if (description != null && description!.isNotEmpty)
+                              Text(
+                                description!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: isDarkMode
+                                      ? Colors.grey[300]
+                                      : Colors.grey[700],
+                                ),
+                              ),
+                            const SizedBox(height: 12),
                             Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Icon(
-                                  Icons.share_outlined,
-                                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                                  size: 24,
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.favorite_border,
+                                      color: isDarkMode
+                                          ? Colors.grey[400]
+                                          : Colors.grey[600],
+                                      size: 24,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '0',
+                                      style: TextStyle(
+                                        color: isDarkMode
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.comment_outlined,
+                                      color: isDarkMode
+                                          ? Colors.grey[400]
+                                          : Colors.grey[600],
+                                      size: 24,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '0',
+                                      style: TextStyle(
+                                        color: isDarkMode
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.share_outlined,
+                                      color: isDarkMode
+                                          ? Colors.grey[400]
+                                          : Colors.grey[600],
+                                      size: 24,
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -720,180 +817,5 @@ class AnimatedPostCard extends StatelessWidget {
     } else {
       return DateFormat('dd/MM/yyyy').format(dateTime);
     }
-  }
-}
-
-class AnimatedFloatingActionButton extends StatefulWidget {
-  final Color themeColor;
-  final bool isDarkMode;
-  final VoidCallback onPressed;
-
-  const AnimatedFloatingActionButton({
-    required this.themeColor,
-    required this.isDarkMode,
-    required this.onPressed,
-  });
-
-  @override
-  _AnimatedFloatingActionButtonState createState() => _AnimatedFloatingActionButtonState();
-}
-
-class _AnimatedFloatingActionButtonState extends State<AnimatedFloatingActionButton> 
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    );
-    _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.elasticOut,
-      ),
-    );
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: _animation,
-      child: FloatingActionButton(
-        backgroundColor: widget.themeColor,
-        elevation: 6,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        onPressed: () {
-          widget.onPressed();
-          _controller.reset();
-          _controller.forward();
-        },
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
-      ),
-    );
-  }
-}
-
-class AnimatedBottomBar extends StatelessWidget {
-  final int selectedIndex;
-  final bool isDarkMode;
-  final Color themeColor;
-  final Function(int) onItemSelected;
-
-  const AnimatedBottomBar({
-    required this.selectedIndex,
-    required this.isDarkMode,
-    required this.themeColor,
-    required this.onItemSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 70,
-      decoration: BoxDecoration(
-        color: isDarkMode ? Colors.grey[900] : Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
-          ),
-        ],
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildBottomBarItem(
-            icon: Icons.home_rounded,
-            label: 'Home',
-            index: 0,
-          ),
-          _buildBottomBarItem(
-            icon: Icons.favorite_rounded,
-            label: 'Favorites',
-            index: 2,
-          ),
-          const SizedBox(width: 40),
-          _buildBottomBarItem(
-            icon: Icons.search_rounded,
-            label: 'Search',
-            index: 1,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const SearchScreen()),
-            ),
-          ),
-          _buildBottomBarItem(
-            icon: Icons.person_rounded,
-            label: 'Profile',
-            index: 3,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBottomBarItem({
-    required IconData icon,
-    required String label,
-    required int index,
-    VoidCallback? onTap,
-  }) {
-    final isSelected = selectedIndex == index;
-    final color = isSelected 
-        ? themeColor 
-        : isDarkMode ? Colors.grey[400] : Colors.grey[600];
-
-    return InkWell(
-      onTap: onTap ?? () => onItemSelected(index),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: isSelected 
-                    ? themeColor.withOpacity(0.2) 
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 24,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: color,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
