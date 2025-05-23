@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
 
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
@@ -32,6 +34,34 @@ void main() async {
       child: const MyApp(),
     ),
   );
+}
+
+// ✅ Fungsi untuk kirim notifikasi ke topic "news"
+Future<void> sendNotificationToTopic(String title, String body) async {
+  const String url = 'https://wisataanywherecloud.vercel.app/send-to-topic';
+  const String topic = 'news';
+
+  try {
+    final response = await http.post(
+      Uri.parse(url),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'topic': topic,
+        'notification': {
+          'title': title,
+          'body': body,
+        },
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      print('✅ Notifikasi berhasil dikirim ke topic $topic');
+    } else {
+      print('❌ Gagal mengirim notifikasi: ${response.body}');
+    }
+  } catch (e) {
+    print('❌ Error kirim notifikasi: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -74,15 +104,19 @@ class _FCMWrapperState extends State<FCMWrapper> {
   void initState() {
     super.initState();
 
-    // Dengarkan status login user
+    // Dengarkan login user
     FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user != null) {
-        // Ambil token FCM
+        // 🔐 Ambil token
         String? token = await FirebaseMessaging.instance.getToken();
         print('🔐 FCM Token: $token');
 
+        // 📢 Subscribe ke topic 'news'
+        await FirebaseMessaging.instance.subscribeToTopic('news');
+        print('✅ Subscribed to topic "news"');
+
         if (token != null) {
-          // Simpan token ke Firestore di dokumen user
+          // 💾 Simpan token ke Firestore
           await FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)

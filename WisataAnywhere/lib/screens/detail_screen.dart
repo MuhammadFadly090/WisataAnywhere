@@ -8,8 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:geolocator/geolocator.dart';
-
-import 'package:wisataAnywhere/screens/check_location.dart';
+import 'package:wisataanywhere/screens/check_location.dart';
 
 class DetailPostScreen extends StatefulWidget {
   final String? imageBase64;

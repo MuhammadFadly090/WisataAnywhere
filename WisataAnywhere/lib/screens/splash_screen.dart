@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:wisataAnywhere/main.dart'; // pastikan AuthWrapper ada di main.dart
+import 'package:wisataanywhere/main.dart'; // pastikan AuthWrapper ada di main.dart
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});

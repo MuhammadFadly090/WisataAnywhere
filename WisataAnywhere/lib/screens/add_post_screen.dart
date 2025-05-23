@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:wisataanywhere/main.dart'; // ✅ import fungsi kirim notifikasi
 
 class AddPostScreen extends StatefulWidget {
   const AddPostScreen({super.key});
@@ -38,10 +39,9 @@ class _AddPostScreenState extends State<AddPostScreen> {
       if (pickedFile != null) {
         File originalFile = File(pickedFile.path);
 
-        // Kompresi gambar
         final compressedBytes = await FlutterImageCompress.compressWithFile(
           originalFile.absolute.path,
-          quality: 40, // Semakin rendah = ukuran lebih kecil
+          quality: 40,
         );
 
         if (compressedBytes == null) {
@@ -54,7 +54,6 @@ class _AddPostScreenState extends State<AddPostScreen> {
 
         final base64 = base64Encode(compressedBytes);
 
-        // Cek ukuran Base64 (jangan lebih dari ~800KB)
         if (base64.length > 800000) {
           _showErrorSnackbar('Gambar terlalu besar untuk disimpan.');
           return;
@@ -156,6 +155,12 @@ class _AddPostScreenState extends State<AddPostScreen> {
         'userId': user.uid,
         'status': 'Pending',
       });
+
+      // ✅ Kirim notifikasi ke topik
+      await sendNotificationToTopic(
+        'Postingan Baru!',
+        '${_titleController.text} - lihat info wisata terbaru dari WisataAnywhere.'
+      );
 
       if (mounted) {
         Navigator.pop(context);
