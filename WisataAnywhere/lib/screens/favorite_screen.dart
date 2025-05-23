@@ -30,6 +30,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
     if (currentUser == null) {
       setState(() {
         isLoading = false;
+        errorMessage = 'User not logged in.';
       });
       return;
     }
@@ -44,19 +45,17 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
       final favList = querySnapshot.docs.map((doc) {
         final data = doc.data();
 
-        // Amankan tiap field, jika null beri default yang aman
         final postId = data['postId']?.toString() ?? '';
         final title = data['title']?.toString() ?? '';
         final description = data['description']?.toString() ?? '';
-        final image = data['image']?.toString(); // image bisa null, nanti cek saat decode
+        final image = data['image']?.toString(); // nullable
         final fullName = data['fullName']?.toString() ?? '';
+        final userId = data['userId']?.toString() ?? ''; // <-- DITAMBAHKAN
 
-        // Tangani field tanggal dengan aman
         DateTime originalPostCreatedAt;
         final originalDateRaw = data['originalPostCreatedAt'];
 
         if (originalDateRaw == null) {
-          // Jika null, bisa set default (misal sekarang) atau null, sesuaikan kebutuhan
           originalPostCreatedAt = DateTime.now();
         } else if (originalDateRaw is Timestamp) {
           originalPostCreatedAt = originalDateRaw.toDate();
@@ -76,6 +75,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
           'description': description,
           'image': image,
           'fullName': fullName,
+          'userId': userId, // <-- DITAMBAHKAN
           'originalPostCreatedAt': originalPostCreatedAt,
         };
       }).toList();
@@ -108,10 +108,12 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                       itemBuilder: (context, index) {
                         final fav = favorites[index];
                         return Card(
-                          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                          margin: const EdgeInsets.symmetric(
+                              vertical: 8, horizontal: 12),
                           child: ListTile(
                             contentPadding: const EdgeInsets.all(10),
-                            leading: (fav['image'] != null && fav['image']!.isNotEmpty)
+                            leading: (fav['image'] != null &&
+                                    fav['image']!.isNotEmpty)
                                 ? Image.memory(
                                     base64Decode(fav['image']),
                                     width: 60,
@@ -136,7 +138,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                                     createdAt: fav['originalPostCreatedAt'],
                                     fullName: fav['fullName'],
                                     postId: fav['postId'],
-                                    userId: fav['userId'],
+                                    userId: fav['userId'], // <-- DITAMBAHKAN
                                   ),
                                 ),
                               );
