@@ -74,7 +74,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onItemTapped(int index) {
-    // Handle special cases for navigation to separate screens
     if (index == 1) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => const AddPostScreen()),
@@ -95,7 +94,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     
-    // Normal navigation for other tabs
     setState(() {
       _selectedIndex = index;
       _pageController.jumpToPage(index == 3 ? 2 : index);
@@ -132,16 +130,9 @@ class _HomeScreenState extends State<HomeScreen> {
         controller: _pageController,
         physics: const NeverScrollableScrollPhysics(),
         children: [
-          // Home Page (Index 0)
           _buildHomeContent(isDarkMode, themeColor),
-          
-          // Placeholder for Add Post (Index 1)
-          Container(),
-          
-          // Favorites Page (Index 2)
+          Container(), // Placeholder for Add Post
           const FavoriteScreen(),
-          
-          // Profile Page is handled separately via Navigator
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -163,7 +154,6 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              // Home Button
               _buildNavItem(
                 icon: Icons.home,
                 label: 'Home',
@@ -172,8 +162,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 isDarkMode: isDarkMode,
                 themeColor: themeColor,
               ),
-              
-              // Favorites Button
               _buildNavItem(
                 icon: Icons.favorite,
                 label: 'Favorites',
@@ -182,11 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 isDarkMode: isDarkMode,
                 themeColor: themeColor,
               ),
-              
-              // Spacer for FAB
               const SizedBox(width: 40),
-              
-              // Search Button
               _buildNavItem(
                 icon: Icons.search,
                 label: 'Search',
@@ -199,8 +183,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   MaterialPageRoute(builder: (context) => const SearchScreen()),
                 ),
               ),
-              
-              // Profile Button
               _buildNavItem(
                 icon: Icons.person,
                 label: 'Profile',
@@ -285,99 +267,130 @@ class _HomeScreenState extends State<HomeScreen> {
             final description = data['description'] as String?;
             final createdAtStr = data['createdAt'] as String;
             final fullName = data['fullName'] as String? ?? 'Anonymous';
-            final userId = data['userId'] as String? ?? 'Unknown'; // ← Tambahkan ini
+            final userId = data['userId'] as String? ?? 'Unknown';
             final createdAt = DateTime.parse(createdAtStr);
 
-            return Card(
-              margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => _navigateToDetailScreen(
-                  postId, imageBase64, title, description, createdAt, fullName, userId),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (imageBase64 != null)
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(12)),
-                        child: Image.memory(
-                          base64Decode(imageBase64),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: 200,
-                        ),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+            return FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(userId)
+                  .get(),
+              builder: (context, userSnapshot) {
+                if (userSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  );
+                }
+
+                if (userSnapshot.hasError) {
+                  return _buildErrorState(isDarkMode, 'Error loading user data');
+                }
+
+                final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+                final photoBase64 = userData?['photoBase64'] as String?;
+                final userPhoto = photoBase64 != null
+                    ? MemoryImage(base64Decode(photoBase64))
+                    : const AssetImage('assets/default_profile.png') as ImageProvider;
+
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _navigateToDetailScreen(
+                      postId, imageBase64, title, description, createdAt, fullName, userId),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (imageBase64 != null)
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(12)),
+                            child: Image.memory(
+                              base64Decode(imageBase64),
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: 200,
+                            ),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const SizedBox(width: 8),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              Row(
                                 children: [
-                                  Text(
-                                    fullName,
+                                  CircleAvatar(
+                                    radius: 20,
+                                    backgroundImage: userPhoto,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        fullName,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: isDarkMode 
+                                              ? Colors.white 
+                                              : Colors.black,
+                                        ),
+                                      ),
+                                      Text(
+                                        _formatTime(createdAt),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isDarkMode 
+                                              ? Colors.grey[400] 
+                                              : Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              if (title != null && title.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Text(
+                                    title,
                                     style: TextStyle(
+                                      fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                       color: isDarkMode 
                                           ? Colors.white 
                                           : Colors.black,
                                     ),
                                   ),
-                                  Text(
-                                    _formatTime(createdAt),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDarkMode 
-                                          ? Colors.grey[400] 
-                                          : Colors.grey[600],
-                                    ),
+                                ),
+                              if (description != null && description.isNotEmpty)
+                                Text(
+                                  description,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: isDarkMode 
+                                        ? Colors.grey[300] 
+                                        : Colors.grey[700],
                                   ),
-                                ],
-                              ),
+                                ),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          if (title != null && title.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Text(
-                                title,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDarkMode 
-                                      ? Colors.white 
-                                      : Colors.black,
-                                ),
-                              ),
-                            ),
-                          if (description != null && description.isNotEmpty)
-                            Text(
-                              description,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: isDarkMode 
-                                    ? Colors.grey[300] 
-                                    : Colors.grey[700],
-                              ),
-                            ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             );
           },
         );
@@ -385,18 +398,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildErrorState(bool isDarkMode, String message) {
+  Widget _buildErrorState(bool isDarkMode, String error) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline, size: 50, color: Colors.red),
+          Icon(
+            Icons.error_outline,
+            color: isDarkMode ? Colors.red[300] : Colors.red,
+            size: 48,
+          ),
           const SizedBox(height: 16),
           Text(
-            message,
+            error,
             style: TextStyle(
+              color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
               fontSize: 16,
-              color: isDarkMode ? Colors.white : Colors.black,
             ),
           ),
         ],
@@ -409,22 +426,25 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.post_add, size: 50, 
-              color: isDarkMode ? Colors.grey[400] : Colors.grey),
+          Icon(
+            Icons.hourglass_empty,
+            color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            size: 48,
+          ),
           const SizedBox(height: 16),
           Text(
             'No posts available',
             style: TextStyle(
+              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
               fontSize: 16,
-              color: isDarkMode ? Colors.white : Colors.black,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Be the first to create a post!',
+            'Be the first to share your travel experience!',
             style: TextStyle(
+              color: isDarkMode ? Colors.grey[500] : Colors.grey[700],
               fontSize: 14,
-              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
             ),
           ),
         ],
