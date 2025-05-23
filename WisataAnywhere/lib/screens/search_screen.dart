@@ -1,10 +1,12 @@
-import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:math';
+
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:wisataanywhere/screens/detail_screen.dart';
+import 'package:geolocator/geolocator.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({Key? key}) : super(key: key);
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -16,38 +18,79 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _isSearching = false;
   String _searchQuery = '';
 
+  // Filter mode: 'all' atau 'nearby'
+  String _filterMode = 'all';
+
+  Position? _userPosition;
+
+  static const double nearbyRadiusKm = 10;
+
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
-  // Format time for display
-  String _formatTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final diff = now.difference(dateTime);
+  Future<void> _determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
 
-    if (diff.inSeconds < 60) {
-      return '${diff.inSeconds} secs ago';
-    } else if (diff.inMinutes < 60) {
-      return '${diff.inMinutes} mins ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours} hrs ago';
-    } else if (diff.inHours < 48) {
-      return '1 day ago';
-    } else {
-      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    // Cek layanan lokasi
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      _showErrorSnackBar('Layanan lokasi tidak aktif');
+      return;
     }
+
+    // Cek izin lokasi
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        _showErrorSnackBar('Izin lokasi ditolak');
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      _showErrorSnackBar('Izin lokasi ditolak permanen');
+      return;
+    }
+
+    // Ambil posisi
+    final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high);
+    setState(() {
+      _userPosition = pos;
+    });
   }
 
-  // Search posts by title
+  double _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
+    // Haversine formula
+    const p = 0.017453292519943295; 
+    final a = 0.5 -
+        cos((lat2 - lat1) * p) / 2 +
+        cos(lat1 * p) *
+            cos(lat2 * p) *
+            (1 - cos((lon2 - lon1) * p));
+            2;
+    return 12742 * asin(sqrt(a)); 
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   Future<void> _searchPosts(String query) async {
     setState(() {
       _isSearching = true;
       _searchQuery = query.toLowerCase();
     });
 
-    if (query.isEmpty) {
+    if (query.isEmpty && _filterMode == 'all') {
       setState(() {
         _searchResults = [];
         _isSearching = false;
@@ -55,23 +98,84 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
 
-    // Get all posts and filter by title
     try {
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('posts')
-          .orderBy('createdAt', descending: true)
-          .get();
+      if (_filterMode == 'all') {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('posts')
+            .orderBy('createdAt', descending: true)
+            .get();
 
-      final filteredDocs = querySnapshot.docs.where((doc) {
-        final data = doc.data();
-        final title = (data['title'] as String?) ?? '';
-        return title.toLowerCase().contains(_searchQuery);
-      }).toList();
+        final filteredDocs = querySnapshot.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
 
-      setState(() {
-        _searchResults = filteredDocs;
-        _isSearching = false;
-      });
+          final title = (data['title'] as String? ?? '').toLowerCase();
+          final topic = (data['topic'] as String? ?? '').toLowerCase();
+
+          return title.contains(_searchQuery) || topic.contains(_searchQuery);
+        }).toList();
+
+        setState(() {
+          _searchResults = filteredDocs;
+          _isSearching = false;
+        });
+      } else if (_filterMode == 'nearby') {
+        if (_userPosition == null) {
+          await _determinePosition();
+          if (_userPosition == null) {
+            _showErrorSnackBar('Tidak dapat menentukan lokasi pengguna');
+            setState(() {
+              _isSearching = false;
+              _searchResults = [];
+            });
+            return;
+          }
+        }
+
+        final allPosts = await FirebaseFirestore.instance
+            .collection('posts')
+            .orderBy('createdAt', descending: true)
+            .get();
+
+        final nearbyDocs = allPosts.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          if (!data.containsKey('latitude') || !data.containsKey('longitude'))
+            return false;
+
+          final lat = data['latitude'] as double?;
+          final lon = data['longitude'] as double?;
+          if (lat == null || lon == null) return false;
+
+          final distance = _calculateDistance(
+            _userPosition!.latitude,
+            _userPosition!.longitude,
+            lat,
+            lon,
+          );
+          return distance <= nearbyRadiusKm;
+        }).toList();
+
+        if (nearbyDocs.isEmpty) {
+          setState(() {
+            _searchResults = [];
+            _isSearching = false;
+          });
+          _showErrorSnackBar(
+              'Tidak ada tempat wisata terdekat dalam radius $nearbyRadiusKm km');
+          return;
+        }
+
+        final filteredNearbyDocs = nearbyDocs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final title = (data['title'] as String? ?? '').toLowerCase();
+          final topic = (data['topic'] as String? ?? '').toLowerCase();
+          return title.contains(_searchQuery) || topic.contains(_searchQuery);
+        }).toList();
+
+        setState(() {
+          _searchResults = filteredNearbyDocs;
+          _isSearching = false;
+        });
+      }
     } catch (e) {
       setState(() {
         _isSearching = false;
@@ -80,13 +184,60 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
+  void _showFilterBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<String>(
+              title: const Text('Semua Tempat Wisata'),
+              value: 'all',
+              groupValue: _filterMode,
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _filterMode = value;
+                  });
+                  _searchPosts(_searchController.text);
+                  Navigator.pop(context);
+                }
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('Tempat Wisata Terdekat (10 km)'),
+              value: 'nearby',
+              groupValue: _filterMode,
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _filterMode = value;
+                  });
+                  _searchPosts(_searchController.text);
+                  Navigator.pop(context);
+                }
+              },
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  String _formatTime(DateTime dt) {
+    final now = DateTime.now();
+    final difference = now.difference(dt);
+
+    if (difference.inSeconds < 60) {
+      return 'Baru saja';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} menit lalu';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours} jam lalu';
+    } else {
+      return '${difference.inDays} hari lalu';
+    }
   }
 
   void _navigateToDetailScreen(
@@ -96,21 +247,11 @@ class _SearchScreenState extends State<SearchScreen> {
     String? description,
     DateTime createdAt,
     String fullName,
-    String userId
+    String userId,
   ) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => DetailPostScreen(
-          postId: postId,
-          userId: userId,
-          imageBase64: imageBase64,
-          title: title,
-          description: description,
-          createdAt: createdAt,
-          fullName: fullName,
-        ),
-      ),
-    );
+    // TODO: Implementasi navigasi ke detail screen sesuai project kamu
+    // Contoh:
+    // Navigator.push(context, MaterialPageRoute(builder: (context) => DetailScreen(...)));
   }
 
   @override
@@ -120,195 +261,195 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Search Posts'),
+        title: const Text('Cari Tempat Wisata'),
         elevation: 0,
       ),
       body: Column(
         children: [
-          // Search bar
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             color: Theme.of(context).primaryColor.withOpacity(0.1),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search by title...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          _searchPosts('');
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: isDarkMode ? Colors.grey[800] : Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              onChanged: (value) {
-                _searchPosts(value);
-              },
-            ),
-          ),
-          
-          // Results
-          Expanded(
-            child: _isSearching 
-                ? const Center(child: CircularProgressIndicator())
-                : _searchResults.isEmpty && _searchQuery.isNotEmpty
-                    ? _buildEmptyResults(isDarkMode)
-                    : _buildSearchResults(isDarkMode, themeColor),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyResults(bool isDarkMode) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search_off,
-            size: 64,
-            color: isDarkMode ? Colors.grey[400] : Colors.grey,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No posts found with title "$_searchQuery"',
-            style: TextStyle(
-              fontSize: 16,
-              color: isDarkMode ? Colors.white : Colors.black,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchResults(bool isDarkMode, Color themeColor) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(8),
-      itemCount: _searchResults.length,
-      itemBuilder: (context, index) {
-        final postDoc = _searchResults[index];
-        final postId = postDoc.id;
-        final data = postDoc.data() as Map<String, dynamic>;
-        final imageBase64 = data['image'] as String?;
-        final title = data['title'] as String? ?? 'Untitled';
-        final description = data['description'] as String? ?? '';
-        final createdAtStr = data['createdAt'] as String;
-        final fullName = data['fullName'] as String? ?? 'Anonymous';
-        final userId = data['userId'] as String? ?? 'Unknown';
-        final createdAt = DateTime.parse(createdAtStr);
-
-        return Card(
-          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => _navigateToDetailScreen(
-              postId, imageBase64, title, description, createdAt, fullName, userId),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                if (imageBase64 != null)
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(12)),
-                    child: Image.memory(
-                      base64Decode(imageBase64),
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: 200,
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Cari berdasarkan judul',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
+                    onChanged: (value) {
+                      _searchPosts(value);
+                    },
+                    onSubmitted: (value) {
+                      _searchPosts(value);
+                    },
                   ),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundColor: themeColor.withOpacity(0.2),
-                            child: Icon(
-                              Icons.person,
-                              size: 16,
-                              color: themeColor,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                fullName,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: isDarkMode 
-                                      ? Colors.white 
-                                      : Colors.black,
-                                ),
-                              ),
-                              Text(
-                                _formatTime(createdAt),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: isDarkMode 
-                                      ? Colors.grey[400] 
-                                      : Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkMode 
-                              ? Colors.white 
-                              : Colors.black,
-                        ),
-                      ),
-                      if (description.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            description,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: isDarkMode 
-                                  ? Colors.grey[300] 
-                                  : Colors.grey[700],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  onPressed: _showFilterBottomSheet,
                 ),
               ],
             ),
           ),
-        );
-      },
+          Expanded(
+            child: _isSearching
+                ? const Center(child: CircularProgressIndicator())
+                : _searchResults.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Tidak ada hasil pencarian',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _searchResults.length,
+                        itemBuilder: (context, index) {
+                          final doc = _searchResults[index];
+                          final data = doc.data() as Map<String, dynamic>;
+                          final postId = doc.id;
+                          final imageBase64 = data['image'] as String?;
+                          final title = data['title'] as String?;
+                          final description = data['description'] as String?;
+                          final createdAtStr = data['createdAt'] as String? ?? '';
+                          final fullName = data['fullName'] as String? ?? 'Unknown';
+                          final userId = data['userId'] as String? ?? '';
+
+                          DateTime createdAt;
+                          try {
+                            createdAt = DateTime.parse(createdAtStr);
+                          } catch (_) {
+                            createdAt = DateTime.now();
+                          }
+
+                          return InkWell(
+                            onTap: () {
+                              _navigateToDetailScreen(postId, imageBase64, title,
+                                  description, createdAt, fullName, userId);
+                            },
+                            child: Card(
+                              margin:
+                                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 3,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (imageBase64 != null && imageBase64.isNotEmpty)
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Image.memory(
+                                          base64Decode(imageBase64),
+                                          width: 100,
+                                          height: 80,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return Container(
+                                              width: 100,
+                                              height: 80,
+                                              color: Colors.grey[300],
+                                              child: const Icon(Icons.broken_image),
+                                            );
+                                          },
+                                        ),
+                                      )
+                                    else
+                                      Container(
+                                        width: 100,
+                                        height: 80,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey[300],
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: const Icon(Icons.image_not_supported),
+                                      ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            title ?? '-',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: themeColor,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            description ?? '-',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: isDarkMode
+                                                  ? Colors.grey[300]
+                                                  : Colors.grey[800],
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                'Oleh: $fullName',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: isDarkMode
+                                                      ? Colors.grey[400]
+                                                      : Colors.grey[600],
+                                                ),
+                                              ),
+                                              Text(
+                                                _formatTime(createdAt),
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: isDarkMode
+                                                      ? Colors.grey[400]
+                                                      : Colors.grey[600],
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }
