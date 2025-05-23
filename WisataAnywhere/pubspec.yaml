@@ -30,6 +30,8 @@ dependencies:
   firebase_messaging: ^15.2.6
   flutter_local_notifications: ^19.2.1
   http: ^1.4.0
+  liquid_pull_to_refresh: ^3.0.0
+  lottie: ^2.0.0
 
 dev_dependencies:
   flutter_test:
