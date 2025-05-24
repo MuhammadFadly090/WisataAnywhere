@@ -703,112 +703,113 @@ class _DetailPostScreenState extends State<DetailPostScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title ?? "Detail Post"),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Post image first
-                  if (widget.imageBase64 != null)
-                    Stack(
-                      children: [
-                        Image.memory(
-                          base64Decode(widget.imageBase64!),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: 300,
-                        ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      CheckLocationScreen(postId: widget.postId),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: Colors.black54,
-                                shape: BoxShape.circle,
+  return Scaffold(
+    appBar: AppBar(
+      title: Text(widget.title ?? "Detail Post"),
+      backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+    ),
+    body: isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Post image first
+                if (widget.imageBase64 != null)
+                  Stack(
+                    children: [
+                      Image.memory(
+                        base64Decode(widget.imageBase64!),
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: 300,
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    CheckLocationScreen(postId: widget.postId),
                               ),
-                              child: const Icon(
-                                Icons.location_on,
-                                color: Colors.white,
-                                size: 28,
-                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.location_on,
+                              color: Colors.white,
+                              size: 28,
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  
-                  // User profile, title and description below the image
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // User profile section - now showing the post author's profile
-                        Row(
-                          children: [
-                            CircleAvatar(
+                      ),
+                    ],
+                  ),
+                
+                // User profile, title and description below the image
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // User profile section - now showing the post author's profile
+                      Row(
+                        children: [
+                          Hero(
+                            tag: 'user_avatar_${widget.userId}_${widget.postId}',
+                            child: CircleAvatar(
                               radius: 20,
-                              backgroundImage: postUserData?['photoBase64'] != null
-                                ? MemoryImage(base64Decode(postUserData!['photoBase64']))
-                                : const AssetImage('assets/default_profile.png') as ImageProvider,
-                            ),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  widget.fullName,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  formatTime(widget.createdAt),
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 16),
-                        
-                        // Title and description
-                        if (widget.title != null && widget.title!.isNotEmpty)
-                          Text(
-                            widget.title!,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                              backgroundImage: MemoryImage(base64Decode(postUserData!['photoBase64'])),
                             ),
                           ),
-                        const SizedBox(height: 8),
-                        if (widget.description != null &&
-                            widget.description!.isNotEmpty)
-                          Text(
-                            widget.description!,
-                            style: const TextStyle(fontSize: 16),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.fullName,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                formatTime(widget.createdAt),
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // Title and description
+                      if (widget.title != null && widget.title!.isNotEmpty)
+                        Text(
+                          widget.title!,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      if (widget.description != null &&
+                          widget.description!.isNotEmpty)
+                        Text(
+                          widget.description!,
+                          style: const TextStyle(fontSize: 16),
                           ),
                       ],
                     ),
