@@ -19,6 +19,32 @@ import 'screens/sign_up_screen.dart';
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
+// Handler untuk notifikasi background
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  print("Handling a background message: ${message.messageId}");
+  
+  // Tampilkan notifikasi
+  const AndroidNotificationDetails androidPlatformChannelSpecifics =
+      AndroidNotificationDetails(
+    'default_channel',
+    'Default Channel',
+    importance: Importance.max,
+    priority: Priority.high,
+  );
+  
+  const NotificationDetails platformChannelSpecifics =
+      NotificationDetails(android: androidPlatformChannelSpecifics);
+  
+  await flutterLocalNotificationsPlugin.show(
+    0,
+    message.notification?.title,
+    message.notification?.body,
+    platformChannelSpecifics,
+  );
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -27,6 +53,9 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     print('✅ Firebase initialized successfully');
+
+    // Set background handler
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     // Konfigurasi notifikasi lokal
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -37,9 +66,27 @@ void main() async {
 
     await flutterLocalNotificationsPlugin.initialize(initializationSettings);
 
+    // Request permission
+    NotificationSettings settings = await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      announcement: false,
+      badge: true,
+      carPlay: false,
+      criticalAlert: false,
+      provisional: false,
+      sound: true,
+    );
+
+    print('Permission granted: ${settings.authorizationStatus}');
+
     // Dengarkan notifikasi saat app aktif
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      print('Got a message whilst in the foreground!');
+      print('Message data: ${message.data}');
+
       if (message.notification != null) {
+        print('Message also contained a notification: ${message.notification}');
+        
         flutterLocalNotificationsPlugin.show(
           0,
           message.notification!.title,
@@ -50,11 +97,19 @@ void main() async {
               'Default Channel',
               importance: Importance.max,
               priority: Priority.high,
+              showWhen: false,
             ),
           ),
         );
       }
     });
+
+    // Handle ketika notifikasi diklik
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      print('A new onMessageOpenedApp event was published!');
+      // Navigasi ke halaman tertentu ketika notifikasi diklik
+    });
+
   } catch (e) {
     print('❌ Firebase initialization error: $e');
   }
@@ -71,10 +126,14 @@ void main() async {
 }
 
 Future<void> sendNotificationToTopic(String title, String body) async {
-  const String url = 'https://wisataanywherecloud.vercel.app/send-to-topic';
-  const String topic = 'news';
-
   try {
+    // Kirim langsung melalui FCM (tanpa backend)
+    await FirebaseMessaging.instance.subscribeToTopic('news');
+    
+    // Atau gunakan HTTP request ke backend Anda jika diperlukan
+    const String url = 'https://wisataanywherecloud.vercel.app/send-to-topic';
+    const String topic = 'news';
+
     final response = await http.post(
       Uri.parse(url),
       headers: {'Content-Type': 'application/json'},
@@ -83,6 +142,10 @@ Future<void> sendNotificationToTopic(String title, String body) async {
         'notification': {
           'title': title,
           'body': body,
+        },
+        'data': {
+          'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+          'screen': 'home',
         },
       }),
     );
@@ -136,22 +199,42 @@ class _FCMWrapperState extends State<FCMWrapper> {
   @override
   void initState() {
     super.initState();
+    _setupFCM();
+  }
 
-    FirebaseAuth.instance.authStateChanges().listen((user) async {
+  Future<void> _setupFCM() async {
+    // Dapatkan token FCM
+    String? token = await FirebaseMessaging.instance.getToken();
+    print('🔐 FCM Token: $token');
+
+    // Subscribe ke topic
+    await FirebaseMessaging.instance.subscribeToTopic('news');
+    print('✅ Subscribed to topic "news"');
+
+    // Simpan token ke Firestore jika user login
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null && token != null) {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+            'fcm_token': token,
+            'updated_at': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      print('✅ Token disimpan di Firestore');
+    }
+
+    // Handle ketika token diperbarui
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      print('Token diperbarui: $newToken');
       if (user != null) {
-        String? token = await FirebaseMessaging.instance.getToken();
-        print('🔐 FCM Token: $token');
-
-        if (token != null) {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .set({
-                'fcm_token': token,
-                'updated_at': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
-          print('✅ Token disimpan di Firestore');
-        }
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({
+              'fcm_token': newToken,
+              'updated_at': FieldValue.serverTimestamp(),
+            });
       }
     });
   }
