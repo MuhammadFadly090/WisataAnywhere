@@ -50,11 +50,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final now = DateTime.now();
     final diff = now.difference(dateTime);
 
-    if (diff.inSeconds < 60) return '${diff.inSeconds} secs ago';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} mins ago';
-    if (diff.inHours < 24) return '${diff.inHours} hrs ago';
-    if (diff.inHours < 48) return '1 day ago';
-    return DateFormat('dd/MM/yyyy').format(dateTime);
+    if (diff.inSeconds < 60) {
+      return '${diff.inSeconds} secs ago';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes} mins ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours} hrs ago';
+    } else if (diff.inHours < 48) {
+      return '1 day ago';
+    } else {
+      return DateFormat('dd/MM/yyyy').format(dateTime);
+    }
   }
 
   Future<void> _handleRefresh() async {
@@ -103,24 +109,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         },
       ),
     );
-  }
-
-  // Helper function to get like count for a post
-  Future<int> _getLikeCount(String postId) async {
-    final query = await FirebaseFirestore.instance
-        .collection('favorites')
-        .where('postId', isEqualTo: postId)
-        .get();
-    return query.docs.length;
-  }
-
-  // Helper function to get comment count for a post
-  Future<int> _getCommentCount(String postId) async {
-    final query = await FirebaseFirestore.instance
-        .collection('comments')
-        .where('postId', isEqualTo: postId)
-        .get();
-    return query.docs.length;
   }
 
   void _onItemTapped(int index) {
@@ -367,27 +355,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             final fullName = data['fullName'] as String? ?? 'Anonymous';
             final userId = data['userId'] as String? ?? 'Unknown';
             final createdAt = DateTime.parse(createdAtStr);
-            final shareCount = data['shareCount'] as int? ?? 0;
 
-            return FutureBuilder(
-              future: Future.wait([
-                _getLikeCount(postId),
-                _getCommentCount(postId),
-                FirebaseFirestore.instance.collection('users').doc(userId).get(),
-              ]),
-              builder: (context, AsyncSnapshot<List<dynamic>> combinedSnapshot) {
-                if (combinedSnapshot.connectionState == ConnectionState.waiting) {
+            return FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(userId)
+                  .get(),
+              builder: (context, userSnapshot) {
+                if (userSnapshot.connectionState == ConnectionState.waiting) {
                   return _buildPostShimmer();
                 }
 
-                if (combinedSnapshot.hasError) {
-                  return _buildErrorCard(isDarkMode, 'Error loading post data');
+                if (userSnapshot.hasError) {
+                  return _buildErrorCard(isDarkMode, 'Error loading user data');
                 }
 
-                final likeCount = combinedSnapshot.data?[0] as int? ?? 0;
-                final commentCount = combinedSnapshot.data?[1] as int? ?? 0;
-                final userDoc = combinedSnapshot.data?[2] as DocumentSnapshot?;
-                final userData = userDoc?.data() as Map<String, dynamic>?;
+                final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
                 final photoBase64 = userData?['photoBase64'] as String?;
                 final userPhoto = photoBase64 != null
                     ? MemoryImage(base64Decode(photoBase64))
@@ -402,11 +385,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   createdAt: createdAt,
                   fullName: fullName,
                   userPhoto: userPhoto,
-                  likeCount: likeCount,
-                  commentCount: commentCount,
-                  shareCount: shareCount,
                   onTap: () => _navigateToDetailScreen(
                     postId, imageBase64, title, description, createdAt, fullName, userId),
+                  postId: postId,
+                  userId: userId,
                 );
               },
             );
@@ -608,9 +590,8 @@ class AnimatedPostCard extends StatelessWidget {
   final String fullName;
   final ImageProvider userPhoto;
   final VoidCallback onTap;
-  final int likeCount;
-  final int commentCount;
-  final int shareCount;
+  final String userId;
+  final String postId;
 
   const AnimatedPostCard({
     required this.animation,
@@ -622,9 +603,8 @@ class AnimatedPostCard extends StatelessWidget {
     required this.fullName,
     required this.userPhoto,
     required this.onTap,
-    required this.likeCount,
-    required this.commentCount,
-    required this.shareCount,
+    required this.userId,
+    required this.postId,
   });
 
   @override
@@ -648,13 +628,15 @@ class AnimatedPostCard extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  shadowColor: isDarkMode ? Colors.black : Colors.grey.withOpacity(0.3),
+                  shadowColor:
+                      isDarkMode ? Colors.black : Colors.grey.withOpacity(0.3),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (imageBase64 != null)
                         ClipRRect(
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                          borderRadius:
+                              const BorderRadius.vertical(top: Radius.circular(16)),
                           child: Stack(
                             children: [
                               Image.memory(
@@ -667,7 +649,8 @@ class AnimatedPostCard extends StatelessWidget {
                                 bottom: 8,
                                 right: 8,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: Colors.black.withOpacity(0.5),
                                     borderRadius: BorderRadius.circular(12),
@@ -692,10 +675,10 @@ class AnimatedPostCard extends StatelessWidget {
                             Row(
                               children: [
                                 Hero(
-                                  tag: 'user_$fullName',
+                                  tag: 'user_avatar_${userId}_$postId', // Fixed: Unique tag with both userId and postId
                                   child: CircleAvatar(
                                     radius: 20,
-                                    backgroundImage: userPhoto,
+                                    backgroundImage: userPhoto,  
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -708,7 +691,9 @@ class AnimatedPostCard extends StatelessWidget {
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 16,
-                                          color: isDarkMode ? Colors.white : Colors.black,
+                                          color: isDarkMode
+                                              ? Colors.white
+                                              : Colors.black,
                                         ),
                                       ),
                                     ],
@@ -717,7 +702,9 @@ class AnimatedPostCard extends StatelessWidget {
                                 IconButton(
                                   icon: Icon(
                                     Icons.more_vert,
-                                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                    color: isDarkMode
+                                        ? Colors.grey[400]
+                                        : Colors.grey[600],
                                   ),
                                   onPressed: () {},
                                 ),
@@ -732,7 +719,9 @@ class AnimatedPostCard extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
-                                    color: isDarkMode ? Colors.white : Colors.black,
+                                    color: isDarkMode
+                                        ? Colors.white
+                                        : Colors.black,
                                   ),
                                 ),
                               ),
@@ -743,7 +732,9 @@ class AnimatedPostCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 14,
-                                  color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                                  color: isDarkMode
+                                      ? Colors.grey[300]
+                                      : Colors.grey[700],
                                 ),
                               ),
                             const SizedBox(height: 12),
@@ -754,14 +745,18 @@ class AnimatedPostCard extends StatelessWidget {
                                   children: [
                                     Icon(
                                       Icons.favorite_border,
-                                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                      color: isDarkMode
+                                          ? Colors.grey[400]
+                                          : Colors.grey[600],
                                       size: 24,
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
-                                      likeCount.toString(),
+                                      '0',
                                       style: TextStyle(
-                                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                        color: isDarkMode
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600],
                                       ),
                                     ),
                                   ],
@@ -770,14 +765,18 @@ class AnimatedPostCard extends StatelessWidget {
                                   children: [
                                     Icon(
                                       Icons.comment_outlined,
-                                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                      color: isDarkMode
+                                          ? Colors.grey[400]
+                                          : Colors.grey[600],
                                       size: 24,
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
-                                      commentCount.toString(),
+                                      '0',
                                       style: TextStyle(
-                                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                        color: isDarkMode
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600],
                                       ),
                                     ),
                                   ],
@@ -786,15 +785,10 @@ class AnimatedPostCard extends StatelessWidget {
                                   children: [
                                     Icon(
                                       Icons.share_outlined,
-                                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                                      color: isDarkMode
+                                          ? Colors.grey[400]
+                                          : Colors.grey[600],
                                       size: 24,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      shareCount.toString(),
-                                      style: TextStyle(
-                                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                                      ),
                                     ),
                                   ],
                                 ),
@@ -818,10 +812,16 @@ class AnimatedPostCard extends StatelessWidget {
     final now = DateTime.now();
     final diff = now.difference(dateTime);
 
-    if (diff.inSeconds < 60) return '${diff.inSeconds} secs ago';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} mins ago';
-    if (diff.inHours < 24) return '${diff.inHours} hrs ago';
-    if (diff.inHours < 48) return '1 day ago';
-    return DateFormat('dd/MM/yyyy').format(dateTime);
+    if (diff.inSeconds < 60) {
+      return '${diff.inSeconds} secs ago';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes} mins ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours} hrs ago';
+    } else if (diff.inHours < 48) {
+      return '1 day ago';
+    } else {
+      return DateFormat('dd/MM/yyyy').format(dateTime);
+    }
   }
 }
